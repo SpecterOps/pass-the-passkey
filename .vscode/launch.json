@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "C#: PasskeyInjector",
+      "type": "dotnet",
+      "request": "launch",
+      "projectPath": "${workspaceFolder}/Src/SpecterOps.Passkeys.Injector/SpecterOps.Passkeys.Injector.csproj",
+      "preLaunchTask": "build"
+    }
+  ]
+}

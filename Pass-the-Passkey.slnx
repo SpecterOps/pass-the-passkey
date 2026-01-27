@@ -1,0 +1,26 @@
+<Solution>
+  <!-- C# GUI App -->
+  <Project Path="Src/SpecterOps.Passkeys.Injector/SpecterOps.Passkeys.Injector.csproj" DefaultStartup="true" />
+
+  <!-- Additional files -->
+  <Folder Name="/Documentation/">
+    <File Path="README.md" />
+    <File Path="LICENSE" />
+  </Folder>
+  <Folder Name="/Config/">
+    <File Path=".editorconfig" />
+    <File Path=".gitignore" />
+    <File Path="global.json" />
+    <File Path="Src/Directory.Build.props" />
+  </Folder>
+  <Folder Name="/Workflows/">
+    <File Path=".github/workflows/autobuild.yml" />
+    <File Path=".github/workflows/release.yml" />
+    <File Path=".github/workflows/codeql-analysis.yml" />
+  </Folder>
+  <Folder Name="/Scripts/">
+    <File Path="Src/Scripts/Invoke-EntraPasskeyInjection.ps1" />
+    <File Path="Src/Scripts/Get-PasskeyAssertionEvent.ps1" />
+    <File Path="Src/Scripts/Invoke-PasskeyCircuitBreaker.ps1" />
+  </Folder>
+</Solution>

@@ -1,0 +1,66 @@
+name: Release
+run-name: 'Release ${{ github.run_number }}'
+
+permissions:
+  id-token: write
+  contents: write
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    name: 'Build'
+    runs-on: windows-latest
+    timeout-minutes: 10
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v6
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        cache: true
+        cache-dependency-path: 'Src/*/packages.lock.json'
+
+    - name: Restore NuGet Packages
+      run: dotnet restore --use-lock-file
+
+    - name: Build and Publish x64
+      run: dotnet publish --runtime win-x64 --no-restore
+
+    - name: Build and Publish ARM64
+      run: dotnet publish --runtime win-arm64 --no-restore
+
+    - name: Extract Version
+      id: version
+      shell: pwsh
+      run: |
+        [string]$version = (Select-Xml -Path 'Src/SpecterOps.Passkeys.Injector/SpecterOps.Passkeys.Injector.csproj' -XPath '//Version').Node.InnerText
+        "VERSION=$version" >> $env:GITHUB_OUTPUT
+
+    - name: Upload x64 Binary as Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: PasskeyInjector_v${{ steps.version.outputs.VERSION }}_x64
+        path: Build/publish/SpecterOps.Passkeys.Injector/release_win-x64/*
+
+    - name: Upload ARM64 Binary as Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: PasskeyInjector_v${{ steps.version.outputs.VERSION }}_arm64
+        path: Build/publish/SpecterOps.Passkeys.Injector/release_win-arm64/*
+
+    - name: Create GitHub Release
+      shell: pwsh
+      working-directory: Build/publish/SpecterOps.Passkeys.Injector/release_win-x64
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        @'
+        ### Notable Changes
+
+        '@ > release-notes.md
+        gh release create v${{ steps.version.outputs.VERSION }} ./*.exe --draft --latest --title "Passkey Injector ${{ steps.version.outputs.VERSION }}" --notes-file release-notes.md

