@@ -91,7 +91,7 @@
         const serialized = {
             challenge: arrayBufferToBase64Url(publicKey.challenge) ?? '',
             timeout: publicKey.timeout,
-            rpId: publicKey.rpId,
+            rpId: publicKey.rpId ?? window.location.hostname,
             userVerification: publicKey.userVerification,
             hints: publicKey.hints,
             extensions: serializeExtensions(publicKey.extensions) ?? undefined,

@@ -1,6 +1,6 @@
 /**
  * WebAuthn Bridge - TypeScript Implementation
- * 
+ *
  * Overrides the WebAuthn implementation to act as a proxy between
  * JavaScript in WebView2 and the native .NET WebAuthn implementation.
  */
@@ -242,7 +242,8 @@ interface SerializedPublicKeyCredential {
         const serialized: SerializedPublicKeyCredentialRequestOptions = {
             challenge: arrayBufferToBase64Url(publicKey.challenge) ?? '',
             timeout: publicKey.timeout,
-            rpId: publicKey.rpId,
+            // Some web apps might be usig the appId extension instead of rpId, so default to hostname
+            rpId: publicKey.rpId ?? window.location.hostname,
             userVerification: publicKey.userVerification,
             hints: (publicKey as PublicKeyCredentialRequestOptionsWithHints).hints,
             extensions: serializeExtensions(publicKey.extensions) ?? undefined,
