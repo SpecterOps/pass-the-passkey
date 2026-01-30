@@ -17,7 +17,7 @@
         </DataTemplate>
         <DataTemplate x:Key="BookmarkMenuItemTemplate">
             <StackPanel Orientation="Horizontal">
-                <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE774;" Margin="0,0,8,0" />
+                <Image Source="{Binding FaviconImageSource}" Width="16" Height="16" Margin="0,0,8,0" />
                 <TextBlock Text="{Binding Name}" />
             </StackPanel>
         </DataTemplate>
@@ -41,7 +41,7 @@
                                     </StackPanel>
                                 </MenuItem.Header>
                                 <MenuItem.ItemContainerStyle>
-                                    <Style TargetType="MenuItem">
+                                    <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                                         <EventSetter Event="Click" Handler="OnBookmarkClick" />
                                     </Style>
                                 </MenuItem.ItemContainerStyle>
@@ -56,7 +56,7 @@
                                     </StackPanel>
                                 </MenuItem.Header>
                                 <MenuItem.ItemContainerStyle>
-                                    <Style TargetType="MenuItem">
+                                    <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
                                         <EventSetter Event="Click" Handler="OnAuthenticateAsClick" />
                                     </Style>
                                 </MenuItem.ItemContainerStyle>

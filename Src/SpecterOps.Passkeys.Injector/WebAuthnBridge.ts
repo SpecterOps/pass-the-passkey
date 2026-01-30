@@ -12,6 +12,7 @@
 /** WebView2 bridge interface exposed by .NET */
 interface WebAuthnBridge {
     GetCredentialAsync(optionsJson: string, mediation: string | null): Promise<string | null>;
+    CreateCredentialAsync(optionsJson: string): Promise<string | null>;
 }
 
 /** Chrome WebView2 host objects interface */
@@ -28,22 +29,9 @@ interface PublicKeyCredentialRequestOptionsWithHints extends PublicKeyCredential
     hints?: string[];
 }
 
-/** Serialized credential descriptor for transport to C# */
-interface SerializedPublicKeyCredentialDescriptor {
-    type: string;
-    id: string; // Base64Url encoded
-    transports?: string[] | undefined;
-}
-
-/** Serialized request options for transport to C# */
-interface SerializedPublicKeyCredentialRequestOptions {
-    challenge: string; // Base64Url encoded
-    timeout?: number | undefined;
-    rpId?: string | undefined;
-    userVerification?: UserVerificationRequirement | undefined;
-    hints?: string[] | undefined;
-    allowCredentials?: SerializedPublicKeyCredentialDescriptor[] | undefined;
-    extensions?: Record<string, unknown> | undefined;
+interface PublicKeyCredentialCreationOptionsWithHints extends PublicKeyCredentialCreationOptions {
+    hints?: string[];
+    attestationFormats?: string[];
 }
 
 /** Serialized assertion response from C# */
@@ -54,13 +42,33 @@ interface SerializedAuthenticatorAssertionResponse {
     userHandle?: string | null | undefined; // Base64Url encoded
 }
 
-/** Serialized PublicKeyCredential from C# */
-interface SerializedPublicKeyCredential {
+/** Serialized attestation response from C# */
+interface SerializedAuthenticatorAttestationResponse {
+    clientDataJSON: string; // Base64Url encoded
+    attestationObject: string; // Base64Url encoded
+    authenticatorData?: string | null | undefined; // Base64Url encoded
+    transports?: string[] | null | undefined;
+    publicKey?: string | null | undefined; // Base64Url encoded
+    publicKeyAlgorithm?: number | null | undefined;
+}
+
+/** Serialized PublicKeyCredential for assertion from C# */
+interface SerializedPublicKeyCredentialAssertion {
     id: string;
     rawId?: string | undefined; // Base64Url encoded
     type?: string | undefined;
     authenticatorAttachment?: AuthenticatorAttachment | null | undefined;
     response: SerializedAuthenticatorAssertionResponse;
+    clientExtensionResults?: AuthenticationExtensionsClientOutputs | undefined;
+}
+
+/** Serialized PublicKeyCredential for attestation from C# */
+interface SerializedPublicKeyCredentialAttestation {
+    id: string;
+    rawId?: string | undefined; // Base64Url encoded
+    type?: string | undefined;
+    authenticatorAttachment?: AuthenticatorAttachment | null | undefined;
+    response: SerializedAuthenticatorAttestationResponse;
     clientExtensionResults?: AuthenticationExtensionsClientOutputs | undefined;
 }
 
@@ -75,6 +83,7 @@ interface SerializedPublicKeyCredential {
 
     // Store the original implementation
     const originalGet = navigator.credentials.get.bind(navigator.credentials);
+    const originalCreate = navigator.credentials.create.bind(navigator.credentials);
 
     // Override navigator.credentials.get()
     navigator.credentials.get = async function (
@@ -82,7 +91,7 @@ interface SerializedPublicKeyCredential {
     ): Promise<Credential | null> {
         const bridge = chrome.webview?.hostObjects?.webAuthnBridge;
 
-        // Fall back to original if bridge unavailable or not a WebAuthn request
+        // Fall back to original if bridge is unavailable or not a WebAuthn request
         if (!bridge || !options?.publicKey) {
             return originalGet(options);
         }
@@ -97,12 +106,43 @@ interface SerializedPublicKeyCredential {
             );
 
             if (publicKeyCredentialJson) {
-                const parsedCredential = JSON.parse(publicKeyCredentialJson) as SerializedPublicKeyCredential;
+                const parsedCredential = JSON.parse(publicKeyCredentialJson) as SerializedPublicKeyCredentialAssertion;
                 return deserializeAssertionResponse(parsedCredential);
             }
 
             // Fall back to original if bridge returns null
             return originalGet(options);
+        } catch (error) {
+            console.error('WebAuthn bridge error:', error);
+            throw error;
+        }
+    };
+
+    // Override navigator.credentials.create()
+    navigator.credentials.create = async function (
+        options?: CredentialCreationOptions
+    ): Promise<Credential | null> {
+        const bridge = chrome.webview?.hostObjects?.webAuthnBridge;
+
+        // Fall back to original if bridge is unavailable or not a WebAuthn request
+        if (!bridge || !options?.publicKey) {
+            return originalCreate(options);
+        }
+
+        try {
+            const serializedOptions = serializePublicKeyCredentialCreationOptions(options.publicKey);
+
+            const publicKeyCredentialJson = await bridge.CreateCredentialAsync(
+                JSON.stringify(serializedOptions)
+            );
+
+            if (publicKeyCredentialJson) {
+                const parsedCredential = JSON.parse(publicKeyCredentialJson) as SerializedPublicKeyCredentialAttestation;
+                return deserializeAttestationResponse(parsedCredential);
+            }
+
+            // Fall back to original if bridge returns null
+            return originalCreate(options);
         } catch (error) {
             console.error('WebAuthn bridge error:', error);
             throw error;
@@ -210,7 +250,7 @@ interface SerializedPublicKeyCredential {
      */
     function serializeExtensions(
         extensions: AuthenticationExtensionsClientInputs | undefined
-    ): Record<string, unknown> | null {
+    ): AuthenticationExtensionsClientInputsJSON | null {
         if (!extensions) {
             return null;
         }
@@ -219,7 +259,7 @@ interface SerializedPublicKeyCredential {
         for (const [key, value] of Object.entries(extensions)) {
             serialized[key] = serializeExtensionValue(value);
         }
-        return serialized;
+        return serialized as AuthenticationExtensionsClientInputsJSON;
     }
 
     // ========================================================================
@@ -234,30 +274,162 @@ interface SerializedPublicKeyCredential {
      */
     function serializePublicKeyCredentialRequestOptions(
         publicKey: PublicKeyCredentialRequestOptions | undefined
-    ): SerializedPublicKeyCredentialRequestOptions | null {
+    ): (PublicKeyCredentialRequestOptionsJSON & { hints?: string[] }) | null {
         if (!publicKey) {
             return null;
         }
 
-        const serialized: SerializedPublicKeyCredentialRequestOptions = {
+        const serialized: Partial<PublicKeyCredentialRequestOptionsJSON> & { hints?: string[] } = {
             challenge: arrayBufferToBase64Url(publicKey.challenge) ?? '',
-            timeout: publicKey.timeout,
-            // Some web apps might be usig the appId extension instead of rpId, so default to hostname
-            rpId: publicKey.rpId ?? window.location.hostname,
-            userVerification: publicKey.userVerification,
-            hints: (publicKey as PublicKeyCredentialRequestOptionsWithHints).hints,
-            extensions: serializeExtensions(publicKey.extensions) ?? undefined,
         };
 
+        if (publicKey.timeout !== undefined) {
+            serialized.timeout = publicKey.timeout;
+        }
+
+        if (publicKey.rpId !== undefined) {
+            serialized.rpId = publicKey.rpId;
+        }
+
+        if (publicKey.userVerification !== undefined) {
+            serialized.userVerification = publicKey.userVerification;
+        }
+
+        const hints = (publicKey as PublicKeyCredentialRequestOptionsWithHints).hints;
+        if (hints !== undefined) {
+            serialized.hints = hints;
+        }
+
+        const extensions = serializeExtensions(publicKey.extensions);
+        if (extensions) {
+            serialized.extensions = extensions;
+        }
+
         if (publicKey.allowCredentials) {
-            serialized.allowCredentials = publicKey.allowCredentials.map(cred => ({
-                type: cred.type,
-                id: arrayBufferToBase64Url(cred.id) ?? '',
-                transports: cred.transports as string[] | undefined,
+            serialized.allowCredentials = publicKey.allowCredentials.map(cred => {
+                const descriptor: PublicKeyCredentialDescriptorJSON = {
+                    type: cred.type,
+                    id: arrayBufferToBase64Url(cred.id) ?? '',
+                };
+
+                if (cred.transports?.length) {
+                    descriptor.transports = [...cred.transports];
+                }
+
+                return descriptor;
+            });
+        }
+
+        return serialized as PublicKeyCredentialRequestOptionsJSON & { hints?: string[] };
+    }
+
+    /**
+     * Serializes PublicKeyCredentialCreationOptions for transport to the C# bridge.
+     * Converts all ArrayBuffer values to Base64Url encoded strings.
+     * @param publicKey - The PublicKeyCredentialCreationOptions to serialize
+     * @returns Serialized options object, or null if input is null/undefined
+     */
+    function serializePublicKeyCredentialCreationOptions(
+        publicKey: PublicKeyCredentialCreationOptions | undefined
+    ): (PublicKeyCredentialCreationOptionsJSON & { hints?: string[]; attestationFormats?: string[] }) | null {
+        if (!publicKey) {
+            return null;
+        }
+
+        const extendedPublicKey = publicKey as PublicKeyCredentialCreationOptionsWithHints;
+        const serialized: Partial<PublicKeyCredentialCreationOptionsJSON> & {
+            hints?: string[];
+            attestationFormats?: string[];
+        } = {
+            challenge: arrayBufferToBase64Url(extendedPublicKey.challenge) ?? '',
+        };
+
+        if (extendedPublicKey.rp) {
+            const rp: PublicKeyCredentialRpEntity = {
+                name: extendedPublicKey.rp.name,
+            };
+
+            if (extendedPublicKey.rp.id !== undefined) {
+                rp.id = extendedPublicKey.rp.id;
+            }
+
+            serialized.rp = rp;
+        }
+
+        if (extendedPublicKey.user) {
+            serialized.user = {
+                id: arrayBufferToBase64Url(extendedPublicKey.user.id) ?? '',
+                name: extendedPublicKey.user.name,
+                displayName: extendedPublicKey.user.displayName,
+            };
+        }
+
+        if (extendedPublicKey.pubKeyCredParams) {
+            serialized.pubKeyCredParams = extendedPublicKey.pubKeyCredParams.map(param => ({
+                type: param.type,
+                alg: param.alg,
             }));
         }
 
-        return serialized;
+        if (extendedPublicKey.timeout !== undefined) {
+            serialized.timeout = extendedPublicKey.timeout;
+        }
+
+        if (extendedPublicKey.attestation !== undefined) {
+            serialized.attestation = extendedPublicKey.attestation;
+        }
+
+        if (extendedPublicKey.attestationFormats !== undefined) {
+            serialized.attestationFormats = extendedPublicKey.attestationFormats;
+        }
+
+        if (extendedPublicKey.hints !== undefined) {
+            serialized.hints = extendedPublicKey.hints;
+        }
+
+        if (extendedPublicKey.authenticatorSelection) {
+            const authenticatorSelection: AuthenticatorSelectionCriteria = {};
+
+            if (extendedPublicKey.authenticatorSelection.authenticatorAttachment !== undefined) {
+                authenticatorSelection.authenticatorAttachment = extendedPublicKey.authenticatorSelection.authenticatorAttachment;
+            }
+
+            if (extendedPublicKey.authenticatorSelection.residentKey !== undefined) {
+                authenticatorSelection.residentKey = extendedPublicKey.authenticatorSelection.residentKey;
+            }
+
+            if (extendedPublicKey.authenticatorSelection.requireResidentKey !== undefined) {
+                authenticatorSelection.requireResidentKey = extendedPublicKey.authenticatorSelection.requireResidentKey;
+            }
+
+            if (extendedPublicKey.authenticatorSelection.userVerification !== undefined) {
+                authenticatorSelection.userVerification = extendedPublicKey.authenticatorSelection.userVerification;
+            }
+
+            serialized.authenticatorSelection = authenticatorSelection;
+        }
+
+        const creationExtensions = serializeExtensions(extendedPublicKey.extensions);
+        if (creationExtensions) {
+            serialized.extensions = creationExtensions;
+        }
+
+        if (extendedPublicKey.excludeCredentials) {
+            serialized.excludeCredentials = extendedPublicKey.excludeCredentials.map(cred => {
+                const descriptor: PublicKeyCredentialDescriptorJSON = {
+                    type: cred.type,
+                    id: arrayBufferToBase64Url(cred.id) ?? '',
+                };
+
+                if (cred.transports?.length) {
+                    descriptor.transports = [...cred.transports];
+                }
+
+                return descriptor;
+            });
+        }
+
+        return serialized as PublicKeyCredentialCreationOptionsJSON & { hints?: string[]; attestationFormats?: string[] };
     }
 
     // ========================================================================
@@ -307,13 +479,60 @@ interface SerializedPublicKeyCredential {
     }
 
     /**
+     * Creates a mock AuthenticatorAttestationResponse object with read-only properties.
+     * @param responseData - The serialized response data from C#
+     * @returns A mock AuthenticatorAttestationResponse object
+     */
+    function createAuthenticatorAttestationResponse(
+        responseData: SerializedAuthenticatorAttestationResponse
+    ): AuthenticatorAttestationResponse {
+        const response = Object.create(null) as AuthenticatorAttestationResponse;
+
+        Object.defineProperties(response, {
+            clientDataJSON: {
+                value: base64UrlToArrayBuffer(responseData.clientDataJSON),
+                writable: false,
+                enumerable: true,
+                configurable: false,
+            },
+            attestationObject: {
+                value: base64UrlToArrayBuffer(responseData.attestationObject),
+                writable: false,
+                enumerable: true,
+                configurable: false,
+            },
+        });
+
+        (response as AuthenticatorAttestationResponse & { getTransports(): string[] }).getTransports = function () {
+            return responseData.transports ?? [];
+        };
+
+        (response as AuthenticatorAttestationResponse & { getPublicKey(): ArrayBuffer | null }).getPublicKey =
+            function () {
+                return responseData.publicKey ? base64UrlToArrayBuffer(responseData.publicKey) : null;
+            };
+
+        (response as AuthenticatorAttestationResponse & { getPublicKeyAlgorithm(): number }).getPublicKeyAlgorithm = function () {
+            return responseData.publicKeyAlgorithm ?? 0;
+        };
+
+        (response as AuthenticatorAttestationResponse & { getAuthenticatorData(): ArrayBuffer }).getAuthenticatorData = function () {
+            return responseData.authenticatorData ? base64UrlToArrayBuffer(responseData.authenticatorData) ?? new ArrayBuffer(0) : new ArrayBuffer(0);
+        };
+
+        Object.setPrototypeOf(response, AuthenticatorAttestationResponse.prototype);
+
+        return response;
+    }
+
+    /**
      * Deserializes a PublicKeyCredential response from the C# bridge.
      * Creates a mock PublicKeyCredential object with proper read-only properties and methods.
      * @param serializedCredential - The serialized credential from C#
      * @returns A mock PublicKeyCredential object, or null if input is invalid
      */
     function deserializeAssertionResponse(
-        serializedCredential: SerializedPublicKeyCredential
+        serializedCredential: SerializedPublicKeyCredentialAssertion
     ): PublicKeyCredential | null {
         if (!serializedCredential?.response) {
             return null;
@@ -379,6 +598,90 @@ interface SerializedPublicKeyCredential {
                     authenticatorData: serializedCredential.response.authenticatorData,
                     signature: serializedCredential.response.signature,
                     userHandle: serializedCredential.response.userHandle ?? null,
+                },
+            };
+        };
+
+        Object.setPrototypeOf(credential, PublicKeyCredential.prototype);
+
+        return credential;
+    }
+
+    /**
+     * Deserializes a PublicKeyCredential attestation response from the C# bridge.
+     * Creates a mock PublicKeyCredential object with proper read-only properties and methods.
+     * @param serializedCredential - The serialized credential from C#
+     * @returns A mock PublicKeyCredential object, or null if input is invalid
+     */
+    function deserializeAttestationResponse(
+        serializedCredential: SerializedPublicKeyCredentialAttestation
+    ): PublicKeyCredential | null {
+        if (!serializedCredential?.response) {
+            return null;
+        }
+
+        const id = serializedCredential.id;
+        const rawId = base64UrlToArrayBuffer(serializedCredential.rawId ?? serializedCredential.id);
+        const type = serializedCredential.type ?? 'public-key';
+        const authenticatorAttachment = serializedCredential.authenticatorAttachment ?? null;
+        const response = createAuthenticatorAttestationResponse(serializedCredential.response);
+        const clientExtensionResults = serializedCredential.clientExtensionResults ?? {};
+
+        const credential = Object.create(null) as PublicKeyCredential;
+
+        Object.defineProperties(credential, {
+            id: {
+                value: id,
+                writable: false,
+                enumerable: true,
+                configurable: false,
+            },
+            rawId: {
+                value: rawId,
+                writable: false,
+                enumerable: true,
+                configurable: false,
+            },
+            type: {
+                value: type,
+                writable: false,
+                enumerable: true,
+                configurable: false,
+            },
+            authenticatorAttachment: {
+                value: authenticatorAttachment,
+                writable: false,
+                enumerable: true,
+                configurable: false,
+            },
+            response: {
+                value: response,
+                writable: false,
+                enumerable: true,
+                configurable: false,
+            },
+        });
+
+        // Instance method: getClientExtensionResults()
+        credential.getClientExtensionResults = function (): AuthenticationExtensionsClientOutputs {
+            return clientExtensionResults;
+        };
+
+        // Instance method: toJSON()
+        (credential as PublicKeyCredential & { toJSON(): unknown }).toJSON = function () {
+            return {
+                id,
+                rawId: serializedCredential.rawId ?? serializedCredential.id,
+                type,
+                authenticatorAttachment,
+                clientExtensionResults,
+                response: {
+                    clientDataJSON: serializedCredential.response.clientDataJSON,
+                    attestationObject: serializedCredential.response.attestationObject,
+                    authenticatorData: serializedCredential.response.authenticatorData ?? null,
+                    transports: serializedCredential.response.transports ?? null,
+                    publicKey: serializedCredential.response.publicKey ?? null,
+                    publicKeyAlgorithm: serializedCredential.response.publicKeyAlgorithm ?? null,
                 },
             };
         };

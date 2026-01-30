@@ -6,9 +6,9 @@ namespace SpecterOps.Passkeys.Injector;
 public class CredentialRequestEventArgs : EventArgs
 {
     /// <summary>
-    /// The options passed to navigator.credentials.get().
+    /// The raw options JSON passed to navigator.credentials.get().
     /// </summary>
-    public PublicKeyCredentialRequestOptions Options { get; }
+    public string OptionsJson { get; }
 
     /// <summary>
     /// The mediation level for the credential request.
@@ -21,9 +21,9 @@ public class CredentialRequestEventArgs : EventArgs
     /// </summary>
     public string? PublicKeyCredential { get; set; }
 
-    public CredentialRequestEventArgs(PublicKeyCredentialRequestOptions options, string? mediation = null)
+    public CredentialRequestEventArgs(string optionsJson, string? mediation = null)
     {
-        Options = options;
+        OptionsJson = optionsJson;
         Mediation = mediation;
     }
 }

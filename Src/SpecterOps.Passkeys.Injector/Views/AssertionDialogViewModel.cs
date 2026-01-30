@@ -72,6 +72,18 @@ public partial class AssertionDialogViewModel : ObservableValidator
     [CustomValidation(typeof(AssertionDialogViewModel), nameof(ValidatePublicKeyCredentialJson))]
     private string? _publicKeyCredentialJson;
 
+    /// <summary>
+    /// Gets or sets the raw JSON request text.
+    /// </summary>
+    [ObservableProperty]
+    private string _assertionOptionsJson = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the request options and populates the view model properties.
+    /// </summary>
+    [ObservableProperty]
+    private PublicKeyCredentialRequestOptions? _assertionOptions;
+
     private static readonly JsonSerializerOptions s_jsonSerializerOptions = new()
     {
         WriteIndented = true
@@ -98,34 +110,41 @@ public partial class AssertionDialogViewModel : ObservableValidator
         }
     }
 
-    /// <summary>
-    /// Sets the request options and populates the view model properties.
-    /// </summary>
-    public PublicKeyCredentialRequestOptions Options
+    partial void OnAssertionOptionsJsonChanged(string value)
     {
-        set
+        AssertionOptionsJson = NormalizeJson(value);
+        AssertionOptions = PublicKeyCredentialRequestOptions.FromJson(value);
+    }
+
+    partial void OnAssertionOptionsChanged(PublicKeyCredentialRequestOptions? value)
+    {
+        if (value == null)
         {
-            RpId = value.RpId ?? string.Empty;
-            Challenge = value.Challenge ?? string.Empty;
-            Hints = value.Hints;
-            Timeout = value.Timeout.HasValue ? value.Timeout.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty;
-            UserVerification = value.UserVerification ?? string.Empty;
-
-            // Populate AllowCredentials collection
-            AllowCredentials.Clear();
-            if (value.AllowCredentials != null)
-            {
-                foreach (var cred in value.AllowCredentials)
-                {
-                    AllowCredentials.Add(cred);
-                }
-            }
-
-            // Serialize Extensions to compressed JSON string
-            Extensions = value.Extensions.HasValue
-                ? value.Extensions.Value.GetRawText()
-                : string.Empty;
+            // Set all bound properties to default values
+            Reset();
+            return;
         }
+
+        RpId = value.RpId ?? string.Empty;
+        Challenge = value.Challenge ?? string.Empty;
+        Hints = value.Hints;
+        Timeout = value.Timeout.HasValue ? value.Timeout.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty;
+        UserVerification = value.UserVerification ?? string.Empty;
+
+        // Populate AllowCredentials collection
+        AllowCredentials.Clear();
+        if (value.AllowCredentials != null)
+        {
+            foreach (var cred in value.AllowCredentials)
+            {
+                AllowCredentials.Add(cred);
+            }
+        }
+
+        // Serialize Extensions to compressed JSON string
+        Extensions = value.Extensions.HasValue
+            ? value.Extensions.Value.GetRawText()
+            : string.Empty;
     }
 
     /// <summary>
@@ -141,6 +160,8 @@ public partial class AssertionDialogViewModel : ObservableValidator
         Hints = null;
         Timeout = string.Empty;
         UserVerification = string.Empty;
+        AssertionOptionsJson = string.Empty;
+        AssertionOptions = null;
         PublicKeyCredentialJson = null;
         ValidateProperty(PublicKeyCredentialJson, nameof(PublicKeyCredentialJson));
         SubmitCommand.NotifyCanExecuteChanged();

@@ -26,7 +26,6 @@ public class PublicKeyCredentialRequestOptions
     /// The relying party identifier.
     /// </summary>
     [JsonPropertyName("rpId")]
-    [JsonRequired]
     public string? RpId { get; set; }
 
     /// <summary>

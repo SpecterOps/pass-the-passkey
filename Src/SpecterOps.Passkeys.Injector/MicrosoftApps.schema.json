@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specterops.io/schema/passkeys/microsoftapps.schema.json",
+  "title": "Microsoft Apps",
+  "description": "Microsoft OAuth application profiles used for authorization flows.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["iconGlyph", "displayName", "clientId"],
+    "properties": {
+      "iconGlyph": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Fluent icon glyph used in the app menu.",
+        "examples": ["\uE902"]
+      },
+      "displayName": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Display name shown in the app menu."
+      },
+      "clientId": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Azure AD application (client) ID.",
+        "examples": ["1fec8e78-bce4-4aaf-ab1b-5451cc387264"]
+      },
+      "redirectUri": {
+        "type": "string",
+        "minLength": 1,
+        "description": "OAuth redirect URI. Defaults to the native client redirect URI.",
+        "default": "https://login.microsoftonline.com/common/oauth2/nativeclient"
+      },
+      "resource": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Resource identifier for v1 OAuth flows."
+      },
+      "scope": {
+        "type": "string",
+        "minLength": 1,
+        "description": "OAuth scopes to request. Defaults to \"openid offline_access\".",
+        "default": "openid offline_access",
+        "examples": ["openid offline_access"]
+      },
+      "useV1Endpoint": {
+        "type": "boolean",
+        "description": "When true, uses the v1 OAuth endpoint.",
+        "default": false
+      },
+      "userAgent": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Optional User-Agent override for token requests.",
+        "examples": ["Mozilla/5.0 (Windows NT 10.0; Win64; x64)"]
+      }
+    }
+  }
+}

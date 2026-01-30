@@ -34,7 +34,8 @@ public class PublicKeyCredential
     /// </summary>
     [JsonPropertyName("response")]
     [JsonRequired]
-    public AuthenticatorAssertionResponse? Response { get; set; }
+    [JsonConverter(typeof(AuthenticatorResponseJsonConverter))]
+    public AuthenticatorResponse? Response { get; set; }
 
     /// <summary>
     /// The authenticator attachment modality.

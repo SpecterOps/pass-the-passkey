@@ -17,6 +17,11 @@ public class WebAuthnBridge
     public event EventHandler<CredentialRequestEventArgs>? CredentialRequested;
 
     /// <summary>
+    /// Event raised when a credential creation is requested from JavaScript.
+    /// </summary>
+    public event EventHandler<CredentialCreationEventArgs>? CredentialCreationRequested;
+
+    /// <summary>
     /// Handles the navigator.credentials.get() call from JavaScript.
     /// </summary>
     /// <param name="optionsJson">The PublicKeyCredentialRequestOptions from JavaScript as a JSON string.</param>
@@ -25,28 +30,39 @@ public class WebAuthnBridge
     {
         try
         {
-            var requestOptions = PublicKeyCredentialRequestOptions.FromJson(optionsJson);
-
-            if (requestOptions != null)
-            {
-                // Raise the event to notify listeners about the credential request
-                var eventArgs = new CredentialRequestEventArgs(requestOptions, mediation);
-                CredentialRequested?.Invoke(this, eventArgs);
-
-                // If a response was provided by the event handler, return it as JSON
-                if (eventArgs.PublicKeyCredential != null)
-                {
-                    return eventArgs.PublicKeyCredential;
-                }
-            }
+            Debug.WriteLine($"WebAuthnBridge.GetCredentialAsync options JSON: {optionsJson}");
+            var eventArgs = new CredentialRequestEventArgs(optionsJson, mediation);
+            CredentialRequested?.Invoke(this, eventArgs);
+            return eventArgs.PublicKeyCredential;
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"WebAuthnBridge.GetCredentialAsync error: {ex.Message}");
+            // Return null if the operation fails, so that the native WebAuthn flow can proceed.
+            return null;
         }
+    }
 
-        // Return null if the operation fails
-        return null;
+    /// <summary>
+    /// Handles the navigator.credentials.create() call from JavaScript.
+    /// </summary>
+    /// <param name="optionsJson">The PublicKeyCredentialCreationOptions from JavaScript as a JSON string.</param>
+    /// <returns>A PublicKeyCredential response as a JSON string, or null if the operation fails.</returns>
+    public async Task<string?> CreateCredentialAsync(string optionsJson)
+    {
+        try
+        {
+            Debug.WriteLine($"WebAuthnBridge.CreateCredentialAsync options JSON: {optionsJson}");
+            var eventArgs = new CredentialCreationEventArgs(optionsJson);
+            CredentialCreationRequested?.Invoke(this, eventArgs);
+            return eventArgs.PublicKeyCredential;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"WebAuthnBridge.CreateCredentialAsync error: {ex.Message}");
+            // Return null if the operation fails, so that the native WebAuthn flow can proceed.
+            return null;
+        }
     }
 }
 

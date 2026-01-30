@@ -23,10 +23,12 @@ namespace SpecterOps.Passkeys.Injector
             var provider = new ServiceContainer();
             var webAuthnBridge = new WebAuthnBridge();
             var assertionViewModel = new AssertionDialogViewModel();
+            var attestationViewModel = new AttestationDialogViewModel();
             var tokenDialogViewModel = new TokenDialogViewModel();
-            var mainWindowViewModel = new MainWindowViewModel(assertionViewModel, tokenDialogViewModel, webAuthnBridge);
+            var mainWindowViewModel = new MainWindowViewModel(assertionViewModel, attestationViewModel, tokenDialogViewModel, webAuthnBridge);
 
             provider.AddService(typeof(AssertionDialogViewModel), assertionViewModel);
+            provider.AddService(typeof(AttestationDialogViewModel), attestationViewModel);
             provider.AddService(typeof(TokenDialogViewModel), tokenDialogViewModel);
             provider.AddService(typeof(MainWindowViewModel), mainWindowViewModel);
             provider.AddService(typeof(WebAuthnBridge), webAuthnBridge);

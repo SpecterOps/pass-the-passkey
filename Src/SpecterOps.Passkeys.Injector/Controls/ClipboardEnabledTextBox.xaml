@@ -8,7 +8,7 @@
              x:Name="Root"
              KeyboardNavigation.TabNavigation="Once">
     <UserControl.Resources>
-        <Style x:Key="OverlayCopyButtonStyle" TargetType="Button">
+        <Style x:Key="OverlayCopyButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
             <Setter Property="Visibility" Value="Hidden"/>
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsMouseOver, ElementName=Root}" Value="True">
@@ -27,10 +27,10 @@
                 Style="{StaticResource OverlayCopyButtonStyle}"
                 VerticalAlignment="Stretch"
                 HorizontalAlignment="Right"
-            Width="{Binding ActualHeight, ElementName=Root}"
-            Padding="0"
-            HorizontalContentAlignment="Center"
-            TabIndex="0"
+                Width="{Binding ActualHeight, ElementName=Root}"
+                Padding="0"
+                HorizontalContentAlignment="Center"
+                TabIndex="0"
                 Click="CopyButton_Click"/>
     </Grid>
 </UserControl>

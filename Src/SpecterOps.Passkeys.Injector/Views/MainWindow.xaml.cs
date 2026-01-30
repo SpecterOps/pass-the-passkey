@@ -22,6 +22,7 @@ public partial class MainWindow : Window
         _viewModel = Ioc.Default.GetRequiredService<MainWindowViewModel>();
         DataContext = _viewModel;
         _viewModel.CredentialRequested += ShowAssertionDialog;
+        _viewModel.CredentialCreationRequested += ShowAttestationDialog;
 
         Closed += OnWindowClosed;
         InitializeAsync();
@@ -57,7 +58,7 @@ public partial class MainWindow : Window
     private void OnAddressBarSuggestionsClosed(object sender, EventArgs e)
     {
         // When the suggestions dropdown closes, navigate to the selected URL
-        if (addressBar.SelectedItem is MainWindowViewModel.Bookmark selectedBookmark)
+        if (addressBar.SelectedItem is Bookmark selectedBookmark)
         {
             Navigate(selectedBookmark.Url);
         }
@@ -118,6 +119,12 @@ public partial class MainWindow : Window
         dialog.ShowDialog();
     }
 
+    private void ShowAttestationDialog(object? sender, EventArgs e)
+    {
+        AttestationDialog dialog = new() { Owner = this };
+        dialog.ShowDialog();
+    }
+
     private async void OnWindowClosed(object? sender, EventArgs e)
     {
         // Clear all browsing data on close
@@ -148,7 +155,7 @@ public partial class MainWindow : Window
 
     private void OnBookmarkClick(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem menuItem || menuItem.DataContext is not MainWindowViewModel.Bookmark bookmark)
+        if (sender is not MenuItem menuItem || menuItem.DataContext is not Bookmark bookmark)
         {
             return;
         }
@@ -158,7 +165,7 @@ public partial class MainWindow : Window
 
     private void OnAuthenticateAsClick(object sender, RoutedEventArgs e)
     {
-        if (sender is not MenuItem menuItem || menuItem.DataContext is not MainWindowViewModel.MicrosoftApp profile)
+        if (sender is not MenuItem menuItem || menuItem.DataContext is not MicrosoftApp profile)
         {
             return;
         }

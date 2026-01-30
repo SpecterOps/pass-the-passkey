@@ -1,0 +1,51 @@
+[
+  {
+    "iconGlyph": "\uE902",
+    "displayName": "Microsoft Teams",
+    "clientId": "1fec8e78-bce4-4aaf-ab1b-5451cc387264"
+  },
+  {
+    "iconGlyph": "\uE774",
+    "displayName": "Microsoft Edge",
+    "clientId": "ecd6b820-32c2-49b6-98a6-444530e5a77a"
+  },
+  {
+    "iconGlyph": "\uE756",
+    "displayName": "Microsoft Graph Command Line Tools",
+    "clientId": "14d82eec-204b-4c2f-b7e8-296a70dab67e",
+    "redirectUri": "http://localhost"
+  },
+  {
+    "iconGlyph": "\uE756",
+    "displayName": "Microsoft Azure PowerShell",
+    "clientId": "1950a258-227b-4e31-a9cf-717495945fc2"
+  },
+  {
+    "iconGlyph": "\uE756",
+    "displayName": "Microsoft Azure CLI",
+    "clientId": "04b07795-8ddb-461a-bbee-02f9e1bf7b46"
+  },
+  {
+    "iconGlyph": "\uE975",
+    "displayName": "Microsoft Intune Company Portal",
+    "clientId": "9ba1a5c7-f17a-4de9-a1f1-6178c8d51223",
+    "redirectUri": "msauth://com.microsoft.windowsintune.companyportal/1L4Z9FJCgn5c0VLhyAxC5O9LdlE="
+  },
+  {
+    "iconGlyph": "\uE912",
+    "displayName": "Office 365 Management",
+    "clientId": "00b41c95-dab0-4487-9791-b9d2c32c80f2"
+  },
+  {
+    "iconGlyph": "\uE8A5",
+    "displayName": "Microsoft Office",
+    "clientId": "d3590ed6-52b3-4102-aeff-aad2292ab01c",
+    "redirectUri": "launch-word://com.microsoft.Office.Word"
+  },
+  {
+    "iconGlyph": "\uE753",
+    "displayName": "OneDrive",
+    "clientId": "b26aadf8-566f-4478-926f-589f601d9c74",
+    "redirectUri": "msauth://com.microsoft.skydrive/gSoqzhbCjkyvI/l7kC7IdG7KbPU="
+  }
+]

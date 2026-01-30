@@ -7,7 +7,7 @@ namespace SpecterOps.Passkeys.Injector;
 /// <summary>
 /// Represents an authenticator assertion response.
 /// </summary>
-public class AuthenticatorAssertionResponse
+public class AuthenticatorAssertionResponse : AuthenticatorResponse
 {
     /// <summary>
     /// Contains authenticator data (Base64Url encoded).
@@ -20,12 +20,6 @@ public class AuthenticatorAssertionResponse
     /// </summary>
     [JsonIgnore]
     public AuthenticatorData? AuthenticatorDataParsed => AuthenticatorData != null ? SpecterOps.Passkeys.Injector.AuthenticatorData.Parse(AuthenticatorData) : null;
-
-    /// <summary>
-    /// The JSON-serialized client data passed to the authenticator (Base64Url encoded).
-    /// </summary>
-    [JsonPropertyName("clientDataJSON")]
-    public string? ClientDataJSON { get; set; }
 
     /// <summary>
     /// The raw signature returned by the authenticator (Base64Url encoded).

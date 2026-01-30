@@ -1,0 +1,16 @@
+{
+  "json.schemas": [
+    {
+      "fileMatch": [
+        "Src/SpecterOps.Passkeys.Injector/Bookmarks.json"
+      ],
+      "url": "./Src/SpecterOps.Passkeys.Injector/Bookmarks.schema.json"
+    },
+    {
+      "fileMatch": [
+        "Src/SpecterOps.Passkeys.Injector/MicrosoftApps.json"
+      ],
+      "url": "./Src/SpecterOps.Passkeys.Injector/MicrosoftApps.schema.json"
+    }
+  ]
+}
