@@ -394,10 +394,12 @@ No alerts or other security signals were generated during or after our tests.
 
 #### Disclosure Timeline
 
-| Date         | Event                                                            |
-| ------------ | ---------------------------------------------------------------- |
-| 2026-01-16   | Vulnerability discovered during internal research.               |
-| 2026-01-21   | Initial disclosure to Microsoft Security Response Center (MSRC). |
+| Date         | Event                                                                   |
+| ------------ | ----------------------------------------------------------------------- |
+| 2026-01-16   | Vulnerability discovered during internal research.                      |
+| 2026-01-21   | Initial disclosure to Microsoft Security Response Center (MSRC).        |
+| 2026-02-12   | MSRC requested additional information (correlation IDs and timestamps). |
+| 2026-02-18   | Additional information provided to MSRC.                                |
 
 ### Passkey Circuit Breaker Attack
 
