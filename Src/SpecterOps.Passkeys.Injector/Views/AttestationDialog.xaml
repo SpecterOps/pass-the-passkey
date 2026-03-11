@@ -246,15 +246,19 @@
 
         <!-- Buttons -->
         <Button x:Name="SubmitButton"
-                Content="Submit"
-                Width="100"
+                MinWidth="100"
                 Style="{DynamicResource AccentButtonStyle}"
                 IsDefault="True"
                 Command="{Binding SubmitCommand}"
                 HorizontalAlignment="Center"
                 DockPanel.Dock="Bottom"
                 Margin="0,8,0,0"
-                TabIndex="1"/>
+                TabIndex="1">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE724;" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                <TextBlock Text="Submit"/>
+            </StackPanel>
+        </Button>
 
         <Expander Header="Response (JSON)" IsExpanded="True" DockPanel.Dock="Top" Margin="0,0,0,8" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" VerticalContentAlignment="Stretch" HorizontalContentAlignment="Stretch">
             <TextBox x:Name="ResponseTextBox"

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -15,6 +16,11 @@ public partial class AssertionDialogViewModel : ObservableValidator
     /// Event raised when the user submits a valid response.
     /// </summary>
     public event EventHandler? OnSubmit;
+
+    /// <summary>
+    /// Callback invoked to retrieve the current clipboard text. Returns null if the clipboard contains no text.
+    /// </summary>
+    public Func<string?>? GetClipboardText { get; set; }
 
     /// <summary>
     /// Gets or sets the relying party identifier.
@@ -128,7 +134,7 @@ public partial class AssertionDialogViewModel : ObservableValidator
         RpId = value.RpId ?? string.Empty;
         Challenge = value.Challenge ?? string.Empty;
         Hints = value.Hints;
-        Timeout = value.Timeout.HasValue ? value.Timeout.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty;
+        Timeout = value.Timeout.HasValue ? value.Timeout.Value.ToString(CultureInfo.InvariantCulture) : string.Empty;
         UserVerification = value.UserVerification ?? string.Empty;
 
         // Populate AllowCredentials collection
@@ -165,6 +171,19 @@ public partial class AssertionDialogViewModel : ObservableValidator
         PublicKeyCredentialJson = null;
         ValidateProperty(PublicKeyCredentialJson, nameof(PublicKeyCredentialJson));
         SubmitCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Pastes and normalizes JSON from the clipboard into the response field.
+    /// </summary>
+    [RelayCommand]
+    private void PasteResponse()
+    {
+        string? pastedText = GetClipboardText?.Invoke();
+        if (!string.IsNullOrEmpty(pastedText))
+        {
+            PublicKeyCredentialJson = NormalizeJson(pastedText);
+        }
     }
 
     /// <summary>

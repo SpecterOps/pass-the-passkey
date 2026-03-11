@@ -23,10 +23,10 @@ public partial class AssertionDialog : Window
         if (_viewModel != null)
         {
             _viewModel.OnSubmit += OnSubmit;
+            _viewModel.GetClipboardText = () => Clipboard.ContainsText() ? Clipboard.GetText() : null;
         }
         DataContext = _viewModel;
 
-        // Handle JSON pasting from clipboard
         DataObject.AddPastingHandler(ResponseTextBox, OnResponseJsonPaste);
     }
 
@@ -65,6 +65,28 @@ public partial class AssertionDialog : Window
         base.OnPreviewKeyDown(e);
     }
 
+    private void OnSignWithKeepassXC(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel == null)
+        {
+            return;
+        }
+
+        var dialog = new KeepassXCSigningDialog(
+            challenge: _viewModel.Challenge,
+            rpId: _viewModel.RpId,
+            userVerification: string.IsNullOrEmpty(_viewModel.UserVerification) ? null : _viewModel.UserVerification,
+            allowCredentials: _viewModel.AllowCredentials.Count > 0 ? [.. _viewModel.AllowCredentials] : null)
+        {
+            Owner = this
+        };
+
+        if (dialog.ShowDialog() == true && dialog.SignedCredentialJson != null)
+        {
+            _viewModel.PublicKeyCredentialJson = AssertionDialogViewModel.NormalizeJson(dialog.SignedCredentialJson);
+        }
+    }
+
     private void OnDialogClosed(object? sender, EventArgs e)
     {
         if (_viewModel != null)
@@ -75,8 +97,8 @@ public partial class AssertionDialog : Window
                 _viewModel.PublicKeyCredentialJson = string.Empty;
             }
 
-            // Unsubscribe from the OnSubmit event
             _viewModel.OnSubmit -= OnSubmit;
+            _viewModel.GetClipboardText = null;
         }
     }
 }

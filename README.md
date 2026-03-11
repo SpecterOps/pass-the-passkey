@@ -468,6 +468,21 @@ Silent Passkey Assertion Attack
 
 ### Passkey Persistence Attack
 
+### Software Authenticator
+
+KeepassXC
+
+```json
+{
+    "credentialId": "UvzXcJrg2HqVBmDnS0pJ6jq4uxFCRFtFlVIGpU75U_A",
+    "privateKey": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIBd4oRR3vT0WnwSbKdeHy9OZATL4WHrYvt7KgDdiuf1L\n-----END PRIVATE KEY-----\n",
+    "relyingParty": "webauthn.io",
+    "url": "https://webauthn.io",
+    "userHandle": "d2ViYXV0aG5pby1qb2huQHdlYmF1dGhuLmlv",
+    "username": "john@webauthn.io"
+}
+```
+
 ## Roads Not Taken
 
 ### Evil Authenticator Plugin Attack

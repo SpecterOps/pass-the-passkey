@@ -2,6 +2,8 @@ using System.Buffers.Binary;
 using System.Buffers.Text;
 using System.Diagnostics.CodeAnalysis;
 using System.Formats.Cbor;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace SpecterOps.Passkeys.Injector;
 
@@ -17,9 +19,7 @@ public sealed class AuthenticatorData
     /// <summary>
     /// Minimum length of the authenticator data structure.
     /// </summary>
-    private const int MinLength = SHA256HashSizeInBytes + sizeof(AuthenticatorFlags) + sizeof(uint);
-
-    private const int SHA256HashSizeInBytes = 32;
+    private const int MinLength = SHA256.HashSizeInBytes + sizeof(AuthenticatorFlags) + sizeof(uint);
 
     /// <summary>
     /// SHA-256 hash of the RP ID the credential is scoped to.
@@ -46,47 +46,64 @@ public sealed class AuthenticatorData
     /// Flags contains information from the authenticator about the authentication
     /// and whether or not certain data is present in the authenticator data.
     /// </summary>
-    private readonly AuthenticatorFlags _flags;
+    private AuthenticatorFlags Flags { get; }
 
     /// <summary>
     /// UserPresent indicates that the user presence test has completed successfully.
     /// </summary>
-    public bool UserPresent => _flags.HasFlag(AuthenticatorFlags.UP);
+    public bool UserPresent => Flags.HasFlag(AuthenticatorFlags.UP);
 
     /// <summary>
     /// UserVerified indicates that the user verification process has completed successfully.
     /// </summary>
-    public bool UserVerified => _flags.HasFlag(AuthenticatorFlags.UV);
+    public bool UserVerified => Flags.HasFlag(AuthenticatorFlags.UV);
 
     /// <summary>
     /// Backup eligibility is signaled in authenticator data's flags along with the current backup state.
     /// </summary>
-    public bool IsBackupEligible => _flags.HasFlag(AuthenticatorFlags.BE);
+    public bool IsBackupEligible => Flags.HasFlag(AuthenticatorFlags.BE);
 
     /// <summary>
     /// The current backup state of a multi-device credential as determined by the current managing authenticator.
     /// </summary>
-    public bool IsBackedUp => _flags.HasFlag(AuthenticatorFlags.BS);
+    public bool IsBackedUp => Flags.HasFlag(AuthenticatorFlags.BS);
 
     /// <summary>
     /// HasAttestedCredentialData indicates that the authenticator added attested credential data to the authenticator data.
     /// </summary>
     [MemberNotNullWhen(true, nameof(AttestedCredentialData))]
-    public bool HasAttestedCredentialData => _flags.HasFlag(AuthenticatorFlags.AT);
+    public bool HasAttestedCredentialData => Flags.HasFlag(AuthenticatorFlags.AT);
 
     /// <summary>
     /// HasExtensionsData indicates that the authenticator added extension data to the authenticator data.
     /// </summary>
     [MemberNotNullWhen(true, nameof(Extensions))]
-    public bool HasExtensionsData => _flags.HasFlag(AuthenticatorFlags.ED);
+    public bool HasExtensionsData => Flags.HasFlag(AuthenticatorFlags.ED);
 
     private AuthenticatorData(byte[] rpIdHash, AuthenticatorFlags flags, uint signCount, AttestedCredentialData? acd, byte[]? extensions)
     {
         RpIdHash = rpIdHash;
-        _flags = flags;
+        Flags = flags;
         SignCount = signCount;
         AttestedCredentialData = acd;
         Extensions = extensions;
+    }
+
+    /// <summary>
+    /// Builds the binary authenticator data for an assertion response.
+    /// </summary>
+    public static byte[] Build(string relyingPartyId, AuthenticatorFlags flags, uint signatureCounter)
+    {
+        byte[] buffer = new byte[MinLength];
+
+        byte[] rpIdBinary = Encoding.UTF8.GetBytes(relyingPartyId);
+        SHA256.HashData(rpIdBinary, buffer.AsSpan(0, SHA256.HashSizeInBytes));
+
+        buffer[SHA256.HashSizeInBytes] = (byte)flags;
+
+        BinaryPrimitives.WriteUInt32BigEndian(buffer.AsSpan(SHA256.HashSizeInBytes + sizeof(AuthenticatorFlags)), signatureCounter);
+
+        return buffer;
     }
 
     /// <summary>
@@ -112,8 +129,8 @@ public sealed class AuthenticatorData
         int position = 0;
 
         // rpIdHash (32 bytes)
-        byte[] rpIdHash = span.Slice(position, SHA256HashSizeInBytes).ToArray();
-        position += SHA256HashSizeInBytes;
+        byte[] rpIdHash = span.Slice(position, SHA256.HashSizeInBytes).ToArray();
+        position += rpIdHash.Length;
 
         // flags (1 byte)
         var flags = (AuthenticatorFlags)span[position];

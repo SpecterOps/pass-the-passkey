@@ -14,20 +14,22 @@ public class PublicKeyCredential
     /// </summary>
     [JsonPropertyName("id")]
     [JsonRequired]
-    public string? Id { get; set; }
+    [JsonConverter(typeof(Base64UrlJsonConverter))]
+    public byte[]? Id { get; set; }
 
     /// <summary>
     /// The raw credential identifier (Base64Url encoded).
     /// </summary>
     [JsonPropertyName("rawId")]
-    public string? RawId { get; set; }
+    [JsonConverter(typeof(Base64UrlJsonConverter))]
+    public byte[]? RawId { get; set; }
 
     /// <summary>
     /// The type of the credential (always "public-key").
     /// </summary>
     [JsonPropertyName("type")]
     [JsonRequired]
-    public string Type { get; set; } = "public-key";
+    public string Type { get; set; } = WebAuthnConstants.PublicKeyCredentialType;
 
     /// <summary>
     /// The authenticator's response.

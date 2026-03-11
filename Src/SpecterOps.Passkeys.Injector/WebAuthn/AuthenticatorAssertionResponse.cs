@@ -13,7 +13,8 @@ public class AuthenticatorAssertionResponse : AuthenticatorResponse
     /// Contains authenticator data (Base64Url encoded).
     /// </summary>
     [JsonPropertyName("authenticatorData")]
-    public string? AuthenticatorData { get; set; }
+    [JsonConverter(typeof(Base64UrlJsonConverter))]
+    public byte[]? AuthenticatorData { get; set; }
 
     /// <summary>
     /// The parsed authenticator data structure.
@@ -25,13 +26,15 @@ public class AuthenticatorAssertionResponse : AuthenticatorResponse
     /// The raw signature returned by the authenticator (Base64Url encoded).
     /// </summary>
     [JsonPropertyName("signature")]
-    public string? Signature { get; set; }
+    [JsonConverter(typeof(Base64UrlJsonConverter))]
+    public byte[]? Signature { get; set; }
 
     /// <summary>
     /// The user handle returned by the authenticator (Base64Url encoded).
     /// </summary>
     [JsonPropertyName("userHandle")]
-    public string? UserHandle { get; set; }
+    [JsonConverter(typeof(Base64UrlJsonConverter))]
+    public byte[]? UserHandle { get; set; }
 
     public static AuthenticatorAssertionResponse? FromJson(string json)
     {

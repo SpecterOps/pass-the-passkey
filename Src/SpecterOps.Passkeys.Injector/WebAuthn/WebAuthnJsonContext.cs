@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using SpecterOps.Passkeys.Injector.Cryptography;
 
 namespace SpecterOps.Passkeys.Injector;
 
@@ -11,7 +12,9 @@ namespace SpecterOps.Passkeys.Injector;
 [JsonSerializable(typeof(AuthenticatorResponse))]
 [JsonSerializable(typeof(AuthenticatorAssertionResponse))]
 [JsonSerializable(typeof(AuthenticatorAttestationResponse))]
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(KeePassXCPasskey))]
+[JsonSerializable(typeof(CollectedClientData))]
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
 internal sealed partial class WebAuthnJsonContext : JsonSerializerContext
 {
 }

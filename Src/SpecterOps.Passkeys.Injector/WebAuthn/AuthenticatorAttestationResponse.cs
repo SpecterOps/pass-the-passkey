@@ -19,7 +19,8 @@ public class AuthenticatorAttestationResponse : AuthenticatorResponse
     /// The authenticator data if provided separately (Base64Url encoded).
     /// </summary>
     [JsonPropertyName("authenticatorData")]
-    public string? AuthenticatorData { get; set; }
+    [JsonConverter(typeof(Base64UrlJsonConverter))]
+    public byte[]? AuthenticatorData { get; set; }
 
     /// <summary>
     /// The parsed authenticator data structure.

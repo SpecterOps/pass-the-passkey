@@ -11,5 +11,6 @@ public abstract class AuthenticatorResponse
     /// The JSON-serialized client data passed to the authenticator (Base64Url encoded).
     /// </summary>
     [JsonPropertyName("clientDataJSON")]
-    public string? ClientDataJSON { get; set; }
+    [JsonConverter(typeof(Base64UrlJsonConverter))]
+    public byte[]? ClientDataJSON { get; set; }
 }

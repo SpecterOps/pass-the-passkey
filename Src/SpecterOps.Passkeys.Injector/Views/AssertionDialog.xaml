@@ -49,18 +49,25 @@
     <DockPanel Margin="16" LastChildFill="True">
 
         <Button x:Name="SubmitButton"
-                Content="Submit"
-                Width="100"
+                MinWidth="100"
                 Style="{DynamicResource AccentButtonStyle}"
                 IsDefault="True"
                 Command="{Binding SubmitCommand}"
                 HorizontalAlignment="Center"
                 DockPanel.Dock="Bottom"
                 Margin="0,8,0,0"
-                TabIndex="1" />
+                TabIndex="1">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE724;" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                <TextBlock Text="Submit"/>
+            </StackPanel>
+        </Button>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
 
             <!-- Request Section -->
-            <Expander Header="Request (Parsed)" IsExpanded="True" DockPanel.Dock="Top" ExpandDirection="Down" Margin="0,0,0,8">
+            <Expander Header="Request (Parsed)" IsExpanded="True" ExpandDirection="Down" Margin="0,0,0,8">
                     <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -154,7 +161,7 @@
             </Expander>
 
             <!-- Request (JSON) Section -->
-            <Expander Header="Request (JSON)" IsExpanded="False" DockPanel.Dock="Top" ExpandDirection="Down" Margin="0,0,0,8" MaxHeight="220">
+            <Expander Header="Request (JSON)" IsExpanded="False" ExpandDirection="Down" Margin="0,0,0,8" MaxHeight="220">
                 <TextBox Text="{Binding AssertionOptionsJson}"
                              IsReadOnly="True"
                              AcceptsReturn="True"
@@ -167,18 +174,36 @@
                              FontFamily="Consolas"/>
             </Expander>
 
-            <Expander Header="Response (JSON)" IsExpanded="True" ExpandDirection="Down" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" VerticalContentAlignment="Stretch" HorizontalContentAlignment="Stretch">
-                <TextBox x:Name="ResponseTextBox"
-                            Text="{Binding PublicKeyCredentialJson, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"
-                            AcceptsReturn="True"
-                            AcceptsTab="True"
-                            MinLines="3"
-                            MinHeight="120"
-                            VerticalScrollBarVisibility="Auto"
-                            HorizontalScrollBarVisibility="Auto"
-                            TextWrapping="NoWrap"
-                            FontFamily="Consolas"
-                            TabIndex="0"/>
+            <Expander Header="Response (JSON)" IsExpanded="True" ExpandDirection="Down">
+                <DockPanel>
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,6">
+                        <Button Command="{Binding PasteResponseCommand}" Margin="0,0,8,0" ToolTip="Paste JSON from clipboard">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE77F;" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Paste Response"/>
+                            </StackPanel>
+                        </Button>
+                        <Button Click="OnSignWithKeepassXC" ToolTip="Sign the challenge using KeepassXC exported passkey file">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8D7;" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Sign using KeepassXC"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                    <TextBox x:Name="ResponseTextBox"
+                                Text="{Binding PublicKeyCredentialJson, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"
+                                AcceptsReturn="True"
+                                AcceptsTab="True"
+                                MinLines="3"
+                                MinHeight="120"
+                                VerticalScrollBarVisibility="Auto"
+                                HorizontalScrollBarVisibility="Auto"
+                                TextWrapping="NoWrap"
+                                FontFamily="Consolas"
+                                TabIndex="0"/>
+                </DockPanel>
             </Expander>
+        </StackPanel>
+        </ScrollViewer>
     </DockPanel>
 </Window>
