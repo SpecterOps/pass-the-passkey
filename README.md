@@ -400,6 +400,7 @@ No alerts or other security signals were generated during or after our tests.
 | 2026-01-21   | Initial disclosure to Microsoft Security Response Center (MSRC).        |
 | 2026-02-12   | MSRC requested additional information (correlation IDs and timestamps). |
 | 2026-02-18   | Additional information provided to MSRC.                                |
+| 2026-03-11   | Vulnerability confirmed by MSRC.                                        |
 
 ### Passkey Circuit Breaker Attack
 
