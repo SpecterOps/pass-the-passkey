@@ -16,7 +16,7 @@
     <AssemblyTitle>Passkey Injector</AssemblyTitle>
     <Product>SpecterOps Passkey Injector</Product>
     <AssemblyName>PasskeyInjector</AssemblyName>
-    <Version>2.1.0</Version>
+    <Version>2.2.0</Version>
     <Authors>Michael Grafnetter</Authors>
     <Company>SpecterOps</Company>
     <Copyright>Copyright © SpecterOps</Copyright>

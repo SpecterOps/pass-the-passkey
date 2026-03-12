@@ -17,6 +17,7 @@ public partial class KeepassXCSigningDialogViewModel : ObservableValidator
     private Algorithm _detectedAlgorithm;
     private byte[]? _credentialIdBytes;
     private byte[]? _userHandleBytes;
+    private string _authenticatorAttachment = WebAuthnConstants.AuthenticatorAttachmentPlatform;
 
     public event EventHandler<string>? OnSigned;
 
@@ -41,7 +42,7 @@ public partial class KeepassXCSigningDialogViewModel : ObservableValidator
     [ObservableProperty] private int? _keyLength;
     [ObservableProperty] private string? _hashFunction;
 
-    [ObservableProperty] private int _counter = 0;
+    [ObservableProperty] private uint _counter = 0;
     [ObservableProperty] private bool _userVerified = true;
     [ObservableProperty] private bool _userPresent = true;
 
@@ -75,7 +76,7 @@ public partial class KeepassXCSigningDialogViewModel : ObservableValidator
     [RelayCommand]
     private void DecrementCounter()
     {
-        if (Counter > 0) Counter--;
+        if (Counter > 0u) Counter--;
     }
 
     [RelayCommand(CanExecute = nameof(CanSign))]
@@ -87,7 +88,8 @@ public partial class KeepassXCSigningDialogViewModel : ObservableValidator
         {
             using AsymmetricAlgorithm privateKey = _loadedPasskey.LoadPrivateKey();
 
-            var flags = AuthenticatorFlags.UP;
+            var flags = AuthenticatorFlags.BE | AuthenticatorFlags.BS;
+            if (UserPresent) flags |= AuthenticatorFlags.UP;
             if (UserVerified) flags |= AuthenticatorFlags.UV;
 
             byte[] challengeBytes = Base64Url.DecodeFromChars(_challenge.AsSpan());
@@ -96,11 +98,12 @@ public partial class KeepassXCSigningDialogViewModel : ObservableValidator
                 _rpId,
                 challengeBytes,
                 _detectedAlgorithm,
-                (uint)Counter,
+                Counter,
                 flags,
                 _credentialIdBytes!,
                 _userHandleBytes,
-                privateKey);
+                privateKey,
+                _authenticatorAttachment);
 
             OnSigned?.Invoke(this, credential.ToString());
         }
@@ -120,6 +123,7 @@ public partial class KeepassXCSigningDialogViewModel : ObservableValidator
         {
             KeePassXCPasskey passkey = KeePassXCPasskey.LoadFromFile(path);
 
+            // Validate relying party ID matches
             if (!string.Equals(passkey.RelyingParty, _rpId, StringComparison.OrdinalIgnoreCase))
             {
                 ShowError?.Invoke(
@@ -128,14 +132,16 @@ public partial class KeepassXCSigningDialogViewModel : ObservableValidator
                 return;
             }
 
+            // If allowCredentials is provided, ensure the loaded passkey's credential ID is in the list
+            PublicKeyCredentialDescriptor? matchedDescriptor = null;
             if (_allowCredentials?.Length > 0)
             {
                 string? encodedId = passkey.CredentialId != null
                     ? Base64Url.EncodeToString(passkey.CredentialId)
                     : null;
-                bool found = _allowCredentials.Any(c =>
+                matchedDescriptor = _allowCredentials.FirstOrDefault(c =>
                     string.Equals(c.Id, encodedId, StringComparison.Ordinal));
-                if (!found)
+                if (matchedDescriptor is null)
                 {
                     ShowError?.Invoke(
                         "The passkey's credential ID is not in the allowed credentials list.",
@@ -143,6 +149,12 @@ public partial class KeepassXCSigningDialogViewModel : ObservableValidator
                     return;
                 }
             }
+
+            // Determine authenticator attachment based on transports in the matched descriptor (if any)
+            _authenticatorAttachment = matchedDescriptor?.Transports is { Length: > 0 } transports
+                && !transports.Contains(WebAuthnConstants.AuthenticatorTransportInternal)
+                ? WebAuthnConstants.AuthenticatorAttachmentCrossPlatform
+                : WebAuthnConstants.AuthenticatorAttachmentPlatform;
 
             using AsymmetricAlgorithm key = passkey.LoadPrivateKey();
             _detectedAlgorithm = SoftwareAuthenticator.DetectAlgorithm(key);
@@ -170,6 +182,7 @@ public partial class KeepassXCSigningDialogViewModel : ObservableValidator
         _loadedPasskey = null;
         _credentialIdBytes = null;
         _userHandleBytes = null;
+        _authenticatorAttachment = WebAuthnConstants.AuthenticatorAttachmentPlatform;
         CredentialId = string.Empty;
         UserName = string.Empty;
         UserHandle = string.Empty;

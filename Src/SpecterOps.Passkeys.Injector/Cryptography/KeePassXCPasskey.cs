@@ -1,7 +1,7 @@
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Security.Cryptography;
 
 namespace SpecterOps.Passkeys.Injector.Cryptography;
 

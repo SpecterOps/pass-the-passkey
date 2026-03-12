@@ -19,7 +19,8 @@ public static class SoftwareAuthenticator
         AuthenticatorFlags flags,
         byte[] credentialId,
         byte[]? userHandle,
-        AsymmetricAlgorithm privateKey)
+        AsymmetricAlgorithm privateKey,
+        string? authenticatorAttachment = null)
     {
         ArgumentNullException.ThrowIfNull(relyingPartyId);
         ArgumentNullException.ThrowIfNull(challenge);
@@ -39,6 +40,7 @@ public static class SoftwareAuthenticator
             Id = credentialId,
             RawId = credentialId,
             Type = WebAuthnConstants.PublicKeyCredentialType,
+            AuthenticatorAttachment = authenticatorAttachment,
             Response = new AuthenticatorAssertionResponse
             {
                 ClientDataJSON = clientDataJson,
