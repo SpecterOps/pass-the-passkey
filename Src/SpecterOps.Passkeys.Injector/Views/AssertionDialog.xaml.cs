@@ -87,6 +87,20 @@ public partial class AssertionDialog : Window
         }
     }
 
+    private void OnShowC2Commands(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.AssertionOptions == null)
+        {
+            return;
+        }
+
+        var dialog = new C2CommandsDialog(_viewModel.AssertionOptions)
+        {
+            Owner = this
+        };
+        dialog.ShowDialog();
+    }
+
     private void OnDialogClosed(object? sender, EventArgs e)
     {
         if (_viewModel != null)

@@ -189,6 +189,12 @@
                                 <TextBlock Text="Sign using KeepassXC"/>
                             </StackPanel>
                         </Button>
+                        <Button Click="OnShowC2Commands" Margin="8,0,0,0" ToolTip="Show CLI commands for C2 frameworks">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE756;" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Show C2 Commands"/>
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
                     <TextBox x:Name="ResponseTextBox"
                                 Text="{Binding PublicKeyCredentialJson, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"
