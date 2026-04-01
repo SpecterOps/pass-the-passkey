@@ -13,6 +13,9 @@
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip"
         d:DataContext="{d:DesignInstance Type=local:C2CommandsDialogViewModel, IsDesignTimeCreatable=False}">
+    <Window.Resources>
+        <local:PublicKeyCredentialHintDescriptionConverter x:Key="PublicKeyCredentialHintDescriptionConverter"/>
+    </Window.Resources>
 
     <DockPanel Margin="12" LastChildFill="True">
 
@@ -29,6 +32,20 @@
         <!-- Scrollable content -->
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel>
+                <!-- Credential Type Hint -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Text="Authenticator Type Hint:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox ItemsSource="{x:Static local:C2CommandsDialogViewModel.AuthenticatorTypeHints}"
+                              SelectedItem="{Binding SelectedAuthenticatorTypeHint}"
+                              MinWidth="200">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Converter={StaticResource PublicKeyCredentialHintDescriptionConverter}}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </StackPanel>
+
                 <!-- Mythic Section -->
                 <GroupBox Header="Mythic" Margin="0,0,0,8">
                     <ItemsControl ItemsSource="{Binding MythicCommands}" Margin="8,6,8,6">

@@ -7,6 +7,22 @@ namespace SpecterOps.Passkeys.Injector;
 /// </summary>
 public partial class C2CommandsDialogViewModel : ObservableObject
 {
+    public static IReadOnlyList<PublicKeyCredentialHint> AuthenticatorTypeHints { get; } =
+        Enum.GetValues<PublicKeyCredentialHint>();
+
+    private static readonly Dictionary<string, PublicKeyCredentialHint> s_webAuthnHintMap = new()
+    {
+        ["client-device"] = PublicKeyCredentialHint.ClientDevice,
+        ["security-key"] = PublicKeyCredentialHint.SecurityKey,
+        ["hybrid"] = PublicKeyCredentialHint.Hybrid
+    };
+
+    /// <summary>
+    /// Gets or sets the selected authenticator type hint.
+    /// </summary>
+    [ObservableProperty]
+    private PublicKeyCredentialHint _selectedAuthenticatorTypeHint;
+
     /// <summary>
     /// Gets the list of Mythic CLI commands to display.
     /// </summary>
@@ -14,7 +30,18 @@ public partial class C2CommandsDialogViewModel : ObservableObject
 
     public C2CommandsDialogViewModel(PublicKeyCredentialRequestOptions assertionOptions)
     {
+        _selectedAuthenticatorTypeHint = ResolveDefaultHint(assertionOptions.Hints);
         MythicCommands = BuildMythicCommands(assertionOptions);
+    }
+
+    private static PublicKeyCredentialHint ResolveDefaultHint(string[]? hints)
+    {
+        if (hints is { Length: > 0 } && s_webAuthnHintMap.TryGetValue(hints[0], out var mapped))
+        {
+            return mapped;
+        }
+
+        return PublicKeyCredentialHint.None;
     }
 
     private static List<string> BuildMythicCommands(PublicKeyCredentialRequestOptions options)
