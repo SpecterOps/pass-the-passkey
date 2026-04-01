@@ -51,19 +51,19 @@ jobs:
         "MYTHIC_VERSION=$mythic" >> $env:GITHUB_OUTPUT
 
     - name: Upload x64 Binary as Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: PasskeyInjector_v${{ steps.versions.outputs.INJECTOR_VERSION }}_x64
         path: Build/publish/SpecterOps.Passkeys.Injector/release_win-x64/*
 
     - name: Upload ARM64 Binary as Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: PasskeyInjector_v${{ steps.versions.outputs.INJECTOR_VERSION }}_arm64
         path: Build/publish/SpecterOps.Passkeys.Injector/release_win-arm64/*
 
     - name: Upload Mythic CLI as Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: PasskeysMythicCLI_v${{ steps.versions.outputs.MYTHIC_VERSION }}
         path: Build/bin/SpecterOps.Passkeys.Mythic/release/*
