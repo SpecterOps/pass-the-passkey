@@ -38,21 +38,29 @@ jobs:
     - name: Build and Publish ARM64
       run: dotnet publish --runtime win-arm64 --no-restore
 
-    - name: Extract Version
-      id: version
+    - name: Extract Versions
+      id: versions
       shell: pwsh
       run: |
-        [string]$version = (Select-Xml -Path 'Src/SpecterOps.Passkeys.Injector/SpecterOps.Passkeys.Injector.csproj' -XPath '//Version').Node.InnerText
-        "VERSION=$version" >> $env:GITHUB_OUTPUT
+        [string]$injector = (Select-Xml -Path 'Src/SpecterOps.Passkeys.Injector/SpecterOps.Passkeys.Injector.csproj' -XPath '//Version').Node.InnerText
+        [string]$mythic = (Select-Xml -Path 'Src/SpecterOps.Passkeys.Mythic/SpecterOps.Passkeys.Mythic.csproj' -XPath '//Version').Node.InnerText
+        "INJECTOR_VERSION=$injector" >> $env:GITHUB_OUTPUT
+        "MYTHIC_VERSION=$mythic" >> $env:GITHUB_OUTPUT
 
     - name: Upload x64 Binary as Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: PasskeyInjector_v${{ steps.version.outputs.VERSION }}_x64
+        name: PasskeyInjector_v${{ steps.versions.outputs.INJECTOR_VERSION }}_x64
         path: Build/publish/SpecterOps.Passkeys.Injector/release_win-x64/*
 
     - name: Upload ARM64 Binary as Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: PasskeyInjector_v${{ steps.version.outputs.VERSION }}_arm64
+        name: PasskeyInjector_v${{ steps.versions.outputs.INJECTOR_VERSION }}_arm64
         path: Build/publish/SpecterOps.Passkeys.Injector/release_win-arm64/*
+
+    - name: Upload Mythic CLI as Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: PasskeysMythicCLI_v${{ steps.versions.outputs.MYTHIC_VERSION }}
+        path: Build/publish/SpecterOps.Passkeys.Mythic/release/*

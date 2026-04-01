@@ -2,6 +2,9 @@
   <!-- C# GUI App -->
   <Project Path="Src/SpecterOps.Passkeys.Injector/SpecterOps.Passkeys.Injector.csproj" DefaultStartup="true" />
 
+  <!-- Mythic plugin -->
+  <Project Path="Src/SpecterOps.Passkeys.Mythic/SpecterOps.Passkeys.Mythic.csproj" Id="ca35c4e9-ab51-4a08-a9c5-8d45c439be22" />
+
   <!-- Additional files -->
   <Folder Name="/Documentation/">
     <File Path="README.md" />

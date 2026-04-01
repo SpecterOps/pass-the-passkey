@@ -2,12 +2,14 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <IsPublishable>true</IsPublishable>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <DebugType>embedded</DebugType>
     <!-- Exclude XML documentation files from publish output -->
     <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
     <ApplicationIcon>Lock.ico</ApplicationIcon>
@@ -17,9 +19,6 @@
     <Product>SpecterOps Passkey Injector</Product>
     <AssemblyName>PasskeyInjector</AssemblyName>
     <Version>2.2.0</Version>
-    <Authors>Michael Grafnetter</Authors>
-    <Company>SpecterOps</Company>
-    <Copyright>Copyright © SpecterOps</Copyright>
     <!-- TypeScript configuration (must be synced with tsconfig.json) -->
     <TypeScriptCompileBlocked>false</TypeScriptCompileBlocked>
     <TypeScriptToolsVersion>Latest</TypeScriptToolsVersion>

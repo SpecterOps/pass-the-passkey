@@ -2,12 +2,10 @@
   <!-- These common settings only apply to C# projects. -->
   <PropertyGroup>
     <!-- Configure C# language properties -->
-    <TargetFramework>net10.0-windows</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
-    <DebugType>embedded</DebugType>
 
     <!-- Code Analysis -->
     <AnalysisLevel>latest-recommended</AnalysisLevel>
@@ -22,6 +20,11 @@
     <IsPackable>false</IsPackable>
     <IsPublishable>false</IsPublishable>
     <EnablePackageValidation>true</EnablePackageValidation>
+
+    <!-- Assembly metadata -->
+    <Authors>Michael Grafnetter</Authors>
+    <Company>SpecterOps</Company>
+    <Copyright>Copyright © SpecterOps</Copyright>
 
     <!-- Use lock files to enable NuGet package caching at GitHub -->
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
