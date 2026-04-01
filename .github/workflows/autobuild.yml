@@ -32,11 +32,14 @@ jobs:
     - name: Restore NuGet Packages
       run: dotnet restore --use-lock-file
 
-    - name: Build and Publish x64
-      run: dotnet publish --runtime win-x64 --no-restore
+    - name: Build and Publish Injector x64
+      run: dotnet publish Src/SpecterOps.Passkeys.Injector --runtime win-x64 --no-restore
 
-    - name: Build and Publish ARM64
-      run: dotnet publish --runtime win-arm64 --no-restore
+    - name: Build and Publish Injector ARM64
+      run: dotnet publish Src/SpecterOps.Passkeys.Injector --runtime win-arm64 --no-restore
+
+    - name: Build Mythic CLI
+      run: dotnet build Src/SpecterOps.Passkeys.Mythic --configuration Release --no-restore
 
     - name: Extract Versions
       id: versions
@@ -63,4 +66,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: PasskeysMythicCLI_v${{ steps.versions.outputs.MYTHIC_VERSION }}
-        path: Build/publish/SpecterOps.Passkeys.Mythic/release/*
+        path: Build/bin/SpecterOps.Passkeys.Mythic/release/*

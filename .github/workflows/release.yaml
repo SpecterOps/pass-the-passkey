@@ -28,11 +28,14 @@ jobs:
     - name: Restore NuGet Packages
       run: dotnet restore --use-lock-file
 
-    - name: Build and Publish x64
-      run: dotnet publish --runtime win-x64 --no-restore
+    - name: Build and Publish Injector x64
+      run: dotnet publish Src/SpecterOps.Passkeys.Injector --runtime win-x64 --no-restore
 
-    - name: Build and Publish ARM64
-      run: dotnet publish --runtime win-arm64 --no-restore
+    - name: Build and Publish Injector ARM64
+      run: dotnet publish Src/SpecterOps.Passkeys.Injector --runtime win-arm64 --no-restore
+
+    - name: Build Mythic CLI
+      run: dotnet build Src/SpecterOps.Passkeys.Mythic --configuration Release --no-restore
 
     - name: Extract Versions
       id: versions
@@ -59,11 +62,11 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: PasskeysMythicCLI_v${{ steps.versions.outputs.MYTHIC_VERSION }}
-        path: Build/publish/SpecterOps.Passkeys.Mythic/release/*
+        path: Build/bin/SpecterOps.Passkeys.Mythic/release/*
 
     - name: Create GitHub Release
       shell: pwsh
-      working-directory: Build/publish/SpecterOps.Passkeys.Injector/release_win-x64
+      working-directory: Build
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
@@ -71,4 +74,4 @@ jobs:
         ### Notable Changes
 
         '@ > release-notes.md
-        gh release create v${{ steps.versions.outputs.INJECTOR_VERSION }} ./*.exe ../../../SpecterOps.Passkeys.Mythic/release/*.exe --draft --latest --title "Passkey Injector ${{ steps.versions.outputs.INJECTOR_VERSION }}" --notes-file release-notes.md
+        gh release create v${{ steps.versions.outputs.INJECTOR_VERSION }} publish/SpecterOps.Passkeys.Injector/**/*.exe bin/SpecterOps.Passkeys.Mythic/release/*.exe --draft --latest --title "Passkey Injector ${{ steps.versions.outputs.INJECTOR_VERSION }}" --notes-file release-notes.md
