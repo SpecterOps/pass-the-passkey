@@ -22,11 +22,15 @@ public partial class C2CommandsDialogViewModel : ObservableObject
         string rpId = options.RpId ?? string.Empty;
         string challenge = options.Challenge ?? string.Empty;
 
+        string baseCommand = $"passkeys assertion --relying-party {rpId} --challenge {challenge}";
+
         if (options.AllowCredentials is null or { Length: 0 })
         {
-            return [$"passkeys assertion --relying-party {rpId} --challenge {challenge}"];
+            return [baseCommand];
         }
 
-        return [.. options.AllowCredentials.Select(c => $"passkeys assertion --relying-party {rpId} --credential-id {c.Id} --challenge {challenge}")];
+        var credentialCommands = options.AllowCredentials.Select(c => $"passkeys assertion --relying-party {rpId} --credential-id {c.Id} --challenge {challenge}");
+
+        return [baseCommand, .. credentialCommands];
     }
 }
