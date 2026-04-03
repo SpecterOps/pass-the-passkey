@@ -1,4 +1,4 @@
-namespace SpecterOps.Passkeys.Injector;
+namespace SpecterOps.Passkeys;
 
 /// <summary>
 /// Well-known constants for the WebAuthn protocol and related authenticators.
@@ -29,6 +29,21 @@ public static class WebAuthnConstants
     /// The transport value indicating a platform (internal) authenticator.
     /// </summary>
     public const string AuthenticatorTransportInternal = "internal";
+
+    /// <summary>
+    /// The credential hint value for security keys (roaming authenticators).
+    /// </summary>
+    public const string HintSecurityKey = "security-key";
+
+    /// <summary>
+    /// The credential hint value for client devices (platform authenticators).
+    /// </summary>
+    public const string HintClientDevice = "client-device";
+
+    /// <summary>
+    /// The credential hint value for hybrid (QR code) authenticators.
+    /// </summary>
+    public const string HintHybrid = "hybrid";
 
     /// <summary>
     /// The AAGUID of the KeePassXC authenticator.
