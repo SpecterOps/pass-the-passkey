@@ -46,6 +46,12 @@ public partial class C2CommandsDialogViewModel : ObservableObject
     private bool _promptFlood;
 
     /// <summary>
+    /// Gets or sets whether the spoof flag is enabled.
+    /// </summary>
+    [ObservableProperty]
+    private bool _spoofWindowHandle;
+
+    /// <summary>
     /// Gets the list of Mythic CLI commands to display.
     /// </summary>
     public ObservableCollection<string> MythicCommands { get; } = [];
@@ -60,6 +66,7 @@ public partial class C2CommandsDialogViewModel : ObservableObject
     partial void OnSelectedAuthenticatorTypeHintChanged(PublicKeyCredentialHint value) => RebuildMythicCommands();
     partial void OnKillCredentialUIBrokerChanged(bool value) => RebuildMythicCommands();
     partial void OnPromptFloodChanged(bool value) => RebuildMythicCommands();
+    partial void OnSpoofWindowHandleChanged(bool value) => RebuildMythicCommands();
 
     private void RebuildMythicCommands()
     {
@@ -96,6 +103,11 @@ public partial class C2CommandsDialogViewModel : ObservableObject
         if (PromptFlood)
         {
             parameters.Add("--flood");
+        }
+
+        if (SpoofWindowHandle)
+        {
+            parameters.Add("--spoof");
         }
 
         if (s_authenticatorCliMap.TryGetValue(SelectedAuthenticatorTypeHint, out var authenticatorValue))

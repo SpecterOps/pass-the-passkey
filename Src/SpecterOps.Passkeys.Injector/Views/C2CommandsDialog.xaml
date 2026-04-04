@@ -52,6 +52,7 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <CheckBox Content="Prompt Flood" IsChecked="{Binding PromptFlood}" Margin="0,0,20,0" VerticalAlignment="Center"/>
                             <CheckBox Content="Kill Credential UI Broker" IsChecked="{Binding KillCredentialUIBroker}" VerticalAlignment="Center"/>
+                            <CheckBox Content="Spoof Window Handle" IsChecked="{Binding SpoofWindowHandle}" Margin="20,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                         <ItemsControl ItemsSource="{Binding MythicCommands}">
                             <ItemsControl.ItemTemplate>
