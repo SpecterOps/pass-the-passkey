@@ -12,6 +12,7 @@ internal static class PromptCommand
 {
     private static readonly TimeSpan FloodTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan PromptTimeout = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan AccessDeniedTimeout = TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// Creates the <c>prompt</c> command with options for relying party, challenge, credential scoping,
@@ -101,7 +102,7 @@ internal static class PromptCommand
 
             if (kill)
             {
-                foreach (int pid in CredentialUIBrokerKiller.Kill())
+                foreach (int pid in CredentialUIBrokerKiller.Kill(doubletap: true))
                 {
                     logger.LogInformation("Killed CredentialUIBroker (PID {Pid}).", pid);
                 }
@@ -116,10 +117,14 @@ internal static class PromptCommand
             else
             {
                 logger.LogInformation("Prompting for credentials with relying party '{RpId}' and authenticator hint '{Hint}'...", relyingParty, authenticator);
-                string? result = TryPrompt(logger, relyingParty, challengeBytes, allowedCredentials, credentialHints, attachment, windowHandle);
-                if (result is not null)
+                try
                 {
+                    string result = Prompt(rpId: relyingParty, challenge: challengeBytes, allowedCredentials, credentialHints, attachment, windowHandle);
                     Console.WriteLine(result);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError("Prompt failed: {Message}", ex.Message);
                 }
             }
         });
@@ -165,12 +170,20 @@ internal static class PromptCommand
             attempt++;
             logger.LogInformation("Prompt attempt {Attempt} ({Elapsed:mm\\:ss} elapsed)...", attempt, stopwatch.Elapsed);
 
-            string? result = TryPrompt(logger, rpId, challenge, allowedCredentials, credentialHints, attachment, windowHandle);
-            if (result is not null)
+            try
             {
-                logger.LogInformation("User authenticated on attempt {Attempt} after {Elapsed:mm\\:ss}.", attempt, stopwatch.Elapsed);
+                string result = Prompt(rpId, challenge, allowedCredentials, credentialHints, attachment, windowHandle);
                 Console.WriteLine(result);
                 return;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                logger.LogError("Prompt failed: {Message}", ex.Message);
+                Thread.Sleep(AccessDeniedTimeout);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError("Prompt failed: {Message}", ex.Message);
             }
         }
 
@@ -181,8 +194,7 @@ internal static class PromptCommand
     /// Invokes a single WebAuthn assertion prompt and returns the JSON-encoded response,
     /// or <c>null</c> if the user cancels or the operation fails.
     /// </summary>
-    private static string? TryPrompt(
-        ILogger logger,
+    private static string Prompt(
         string rpId,
         byte[] challenge,
         List<PublicKeyCredentialDescriptor>? allowedCredentials,
@@ -190,36 +202,28 @@ internal static class PromptCommand
         AuthenticatorAttachment attachment,
         WindowHandle windowHandle)
     {
-        try
-        {
-            var api = new WebAuthnApi();
-            var credential = api.AuthenticatorGetAssertion(
-                rpId: rpId,
-                challenge: challenge,
-                userVerificationRequirement: UserVerificationRequirement.Preferred,
-                authenticatorAttachment: attachment,
-                timeoutMilliseconds: (uint)PromptTimeout.TotalMilliseconds,
-                allowCredentials: allowedCredentials,
-                extensions: null,
-                largeBlobOperation: CredentialLargeBlobOperation.None,
-                largeBlob: null,
-                browserInPrivateMode: false,
-                linkedDevice: null,
-                autoFill: false,
-                credentialHints: credentialHints,
-                remoteWebOrigin: null,
-                publicKeyCredentialRequestOptionsJson: null,
-                authenticatorId: null,
-                windowHandle: windowHandle
-            );
+        var api = new WebAuthnApi();
+        var credential = api.AuthenticatorGetAssertion(
+            rpId: rpId,
+            challenge: challenge,
+            userVerificationRequirement: UserVerificationRequirement.Preferred,
+            authenticatorAttachment: attachment,
+            timeoutMilliseconds: (uint)PromptTimeout.TotalMilliseconds,
+            allowCredentials: allowedCredentials,
+            extensions: null,
+            largeBlobOperation: CredentialLargeBlobOperation.None,
+            largeBlob: null,
+            browserInPrivateMode: false,
+            linkedDevice: null,
+            autoFill: false,
+            credentialHints: credentialHints,
+            remoteWebOrigin: null,
+            publicKeyCredentialRequestOptionsJson: null,
+            authenticatorId: null,
+            windowHandle: windowHandle
+        );
 
-            return credential.ToString();
-        }
-        catch (Exception ex)
-        {
-            logger.LogError("Prompt failed: {Message}", ex.Message);
-            return null;
-        }
+        return credential.ToString();
     }
 
     private static WindowHandle ResolvePromptWindowHandle(ILogger logger, bool spoof)

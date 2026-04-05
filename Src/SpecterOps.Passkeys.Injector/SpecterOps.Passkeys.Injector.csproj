@@ -73,4 +73,12 @@
     <PackageReference Include="System.Formats.Cbor" Version="10.0.2" />
   </ItemGroup>
 
+  <!-- Remove temporary WPF build directories that accumulate in the bin output -->
+  <Target Name="CleanWpfTempDirectories" AfterTargets="Build">
+    <ItemGroup>
+      <WpfTempDirectories Include="$([System.IO.Directory]::GetDirectories('$(ArtifactsPath)\bin', '$(MSBuildProjectName)_*_wpftmp'))" />
+    </ItemGroup>
+    <RemoveDir Directories="@(WpfTempDirectories)" />
+  </Target>
+
 </Project>

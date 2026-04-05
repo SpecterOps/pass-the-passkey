@@ -103,7 +103,7 @@ internal static class WaitCommand
         {
             if (kill)
             {
-                List<int> killedPids = CredentialUIBrokerKiller.Kill();
+                List<int> killedPids = CredentialUIBrokerKiller.Kill(doubletap: true);
                 if (killedPids.Count > 0)
                 {
                     Console.Error.WriteLine($"Killed CredentialUIBroker (PID {string.Join(", ", killedPids)}).");

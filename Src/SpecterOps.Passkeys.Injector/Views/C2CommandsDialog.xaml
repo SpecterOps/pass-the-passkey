@@ -47,7 +47,7 @@
                 </StackPanel>
 
                 <!-- Mythic Section -->
-                <GroupBox Header="Mythic" Margin="0,0,0,8">
+                <GroupBox Header="Mythic Apollo" Margin="0,0,0,8">
                     <StackPanel Margin="8,6,8,6">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <CheckBox Content="Prompt Flood" IsChecked="{Binding PromptFlood}" Margin="0,0,20,0" VerticalAlignment="Center"/>
@@ -66,7 +66,15 @@
 
                 <!-- PowerShell Section -->
                 <GroupBox Header="PowerShell" Margin="0,0,0,0">
-                    <TextBlock Text="Coming soon" FontStyle="Italic" Margin="8,6,8,6"/>
+                    <StackPanel Margin="8,6,8,6">
+                        <ItemsControl ItemsSource="{Binding PowerShellCommands}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <local:ClipboardEnabledTextBox Text="{Binding Mode=OneWay}" Margin="0,0,0,4"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
                 </GroupBox>
             </StackPanel>
         </ScrollViewer>

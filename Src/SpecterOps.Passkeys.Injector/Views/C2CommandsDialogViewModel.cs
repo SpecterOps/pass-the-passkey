@@ -56,14 +56,25 @@ public partial class C2CommandsDialogViewModel : ObservableObject
     /// </summary>
     public ObservableCollection<string> MythicCommands { get; } = [];
 
+    /// <summary>
+    /// Gets the list of PowerShell commands to display.
+    /// </summary>
+    public ObservableCollection<string> PowerShellCommands { get; } = [];
+
     public C2CommandsDialogViewModel(PublicKeyCredentialRequestOptions assertionOptions)
     {
         _assertionOptions = assertionOptions;
         _selectedAuthenticatorTypeHint = ResolveDefaultHint(assertionOptions.Hints);
         RebuildMythicCommands();
+        RebuildPowerShellCommands();
     }
 
-    partial void OnSelectedAuthenticatorTypeHintChanged(PublicKeyCredentialHint value) => RebuildMythicCommands();
+    partial void OnSelectedAuthenticatorTypeHintChanged(PublicKeyCredentialHint value)
+    {
+        RebuildMythicCommands();
+        RebuildPowerShellCommands();
+    }
+
     partial void OnKillCredentialUIBrokerChanged(bool value) => RebuildMythicCommands();
     partial void OnPromptFloodChanged(bool value) => RebuildMythicCommands();
     partial void OnSpoofWindowHandleChanged(bool value) => RebuildMythicCommands();
@@ -71,13 +82,13 @@ public partial class C2CommandsDialogViewModel : ObservableObject
     private void RebuildMythicCommands()
     {
         MythicCommands.Clear();
+        MythicCommands.Add("register_assembly -Assembly Passkeys.exe");
 
         string rpId = _assertionOptions.RpId ?? string.Empty;
         string challenge = _assertionOptions.Challenge ?? string.Empty;
-
         string optionalParameters = BuildOptionalParameters();
         string baseArgs = $"prompt --relying-party {rpId}{optionalParameters} --challenge {challenge}";
-        string baseCommand = $"execute_assembly -Assembly Passkeys.exe -Arguments \"{baseArgs}\"";
+        string baseCommand = $"inline_assembly -Assembly Passkeys.exe -Arguments \"{baseArgs}\"";
 
         MythicCommands.Add(baseCommand);
 
@@ -86,7 +97,29 @@ public partial class C2CommandsDialogViewModel : ObservableObject
             foreach (var cred in allowCredentials)
             {
                 string credArgs = $"prompt --relying-party {rpId} --credential-id {cred.Id}{optionalParameters} --challenge {challenge}";
-                MythicCommands.Add($"execute_assembly -Assembly Passkeys.exe -Arguments \"{credArgs}\"");
+                MythicCommands.Add($"inline_assembly -Assembly Passkeys.exe -Arguments \"{credArgs}\"");
+            }
+        }
+    }
+
+    private void RebuildPowerShellCommands()
+    {
+        PowerShellCommands.Clear();
+        PowerShellCommands.Add("Import-Module -Name DSInternals.Passkeys");
+
+        string rpId = _assertionOptions.RpId ?? string.Empty;
+        string challenge = _assertionOptions.Challenge ?? string.Empty;
+        string hintParameter = s_authenticatorCliMap.TryGetValue(SelectedAuthenticatorTypeHint, out var hintValue)
+            ? $" -Hint {hintValue}"
+            : string.Empty;
+
+        PowerShellCommands.Add($"Test-Passkey -RelyingPartyId {rpId}{hintParameter} -Challenge {challenge}");
+
+        if (_assertionOptions.AllowCredentials is { Length: > 0 } allowCredentials)
+        {
+            foreach (var cred in allowCredentials)
+            {
+                PowerShellCommands.Add($"Test-Passkey -RelyingPartyId {rpId} -CredentialId {cred.Id}{hintParameter} -Challenge {challenge}");
             }
         }
     }

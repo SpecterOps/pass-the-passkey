@@ -1,3 +1,4 @@
+using System.Buffers.Text;
 using System.CommandLine;
 using System.Globalization;
 using DSInternals.Win32.WebAuthn;
@@ -70,7 +71,7 @@ internal static class ListCommand
                 foreach (var auth in authenticators)
                 {
                     table.AddRow(
-                        auth.AuthenticatorId is not null ? Base64UrlConverter.ToBase64UrlString(auth.AuthenticatorId) : string.Empty,
+                        auth.AuthenticatorId is not null ? Base64Url.EncodeToString(auth.AuthenticatorId) : string.Empty,
                         auth.AuthenticatorName ?? string.Empty,
                         auth.Locked ? "Yes" : "No"
                     );
@@ -149,7 +150,7 @@ internal static class ListCommand
                     table.AddRow(
                         cred.RelyingPartyInformation?.Id ?? string.Empty,
                         cred.UserInformation?.Name ?? string.Empty,
-                        cred.CredentialId is not null ? Base64UrlConverter.ToBase64UrlString(cred.CredentialId) : string.Empty
+                        cred.CredentialId is not null ? Base64Url.EncodeToString(cred.CredentialId) : string.Empty
                     );
                 }
 
@@ -188,7 +189,7 @@ internal static class ListCommand
                 var grouped = operations
                     .GroupBy(op => (
                         op.RpId,
-                        CredId: op.CredentialId is not null ? Base64UrlConverter.ToBase64UrlString(op.CredentialId) : string.Empty
+                        CredId: op.CredentialId is not null ? Base64Url.EncodeToString(op.CredentialId) : string.Empty
                     ))
                     .Select(g =>
                     {
@@ -216,7 +217,7 @@ internal static class ListCommand
                 {
                     var op = entry.Latest;
                     string lastUsed = (op.TimeCompleted ?? op.TimeStarted)?.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture) ?? string.Empty;
-                    string credId = op.CredentialId is not null ? Base64UrlConverter.ToBase64UrlString(op.CredentialId) : string.Empty;
+                    string credId = op.CredentialId is not null ? Base64Url.EncodeToString(op.CredentialId) : string.Empty;
 
                     table.AddRow(
                         lastUsed,
