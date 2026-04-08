@@ -565,6 +565,8 @@ Sample output:
 Passkeys.exe prompt --relying-party login.microsoft.com --challenge abcd --hwnd 330730
 ```
 
+![Credential UI Window Handle Injection](Assets/credential-ui-window-handle-injection.png)
+
 #### Conclusion
 
 
