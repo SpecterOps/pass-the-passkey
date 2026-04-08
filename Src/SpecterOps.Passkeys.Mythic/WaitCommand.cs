@@ -2,6 +2,8 @@ using System.CommandLine;
 using System.Diagnostics.Eventing.Reader;
 using System.Globalization;
 using System.Security.Principal;
+using Microsoft.Extensions.Logging;
+
 namespace SpecterOps.Passkeys.Mythic;
 
 /// <summary>
@@ -18,7 +20,7 @@ internal static class WaitCommand
     /// <summary>
     /// Creates the <c>wait</c> command with optional <c>--timeout</c> and <c>--kill</c> parameters.
     /// </summary>
-    public static Command Create()
+    public static Command Create(ILogger logger)
     {
         var timeoutOption = new Option<int?>("--timeout", "-t")
         {
@@ -44,7 +46,7 @@ internal static class WaitCommand
                 : DefaultTimeout;
             bool kill = parseResult.GetValue(killOption);
 
-            WaitForAssertionRequest(timeout, kill);
+            WaitForAssertionRequest(logger, timeout, kill);
         });
 
         return command;
@@ -55,7 +57,7 @@ internal static class WaitCommand
     /// (GetAssertion request). Blocks until an event arrives or the timeout expires, then extracts
     /// the relying party ID, timestamp, and Windows user from the event and writes them to stdout.
     /// </summary>
-    private static void WaitForAssertionRequest(TimeSpan timeout, bool kill)
+    private static void WaitForAssertionRequest(ILogger logger, TimeSpan timeout, bool kill)
     {
         using var eventArrived = new ManualResetEventSlim(false);
         string? rpId = null;
@@ -88,16 +90,16 @@ internal static class WaitCommand
         }
         catch (UnauthorizedAccessException)
         {
-            Console.Error.WriteLine("Access denied. Run as administrator to monitor the WebAuthn event log.");
+            logger.LogError("Access denied to the Microsoft-Windows-WebAuthN/Operational event log.");
             return;
         }
         catch (EventLogNotFoundException)
         {
-            Console.Error.WriteLine("The Microsoft-Windows-WebAuthN/Operational event log was not found.");
+            logger.LogError("The Microsoft-Windows-WebAuthN/Operational event log was not found.");
             return;
         }
 
-        Console.Error.WriteLine($"Waiting for WebAuthn assertion request (timeout: {timeout.TotalMinutes:0}m)...");
+        logger.LogInformation("Waiting for WebAuthn assertion request (timeout: {Timeout:0}m)...", timeout.TotalMinutes);
 
         if (eventArrived.Wait(timeout))
         {
@@ -106,7 +108,7 @@ internal static class WaitCommand
                 List<int> killedPids = CredentialUIBrokerKiller.Kill(doubletap: true);
                 if (killedPids.Count > 0)
                 {
-                    Console.Error.WriteLine($"Killed CredentialUIBroker (PID {string.Join(", ", killedPids)}).");
+                    logger.LogInformation("Killed CredentialUIBroker (PID {Pids}).", string.Join(", ", killedPids));
                 }
             }
 
@@ -117,7 +119,7 @@ internal static class WaitCommand
         }
         else
         {
-            Console.Error.WriteLine("Timeout expired. No assertion request detected.");
+            logger.LogWarning("Timeout expired. No assertion request detected.");
         }
     }
 

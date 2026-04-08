@@ -140,7 +140,7 @@ public partial class C2CommandsDialogViewModel : ObservableObject
 
         if (SpoofWindowHandle)
         {
-            parameters.Add("--spoof");
+            parameters.Add("--hwnd 0");
         }
 
         if (s_authenticatorCliMap.TryGetValue(SelectedAuthenticatorTypeHint, out var authenticatorValue))

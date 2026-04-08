@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Microsoft.Extensions.Logging;
 
 namespace SpecterOps.Passkeys.Mythic;
 
@@ -12,11 +13,22 @@ public class Program
     /// </summary>
     public static int Main(string[] args)
     {
+        using ILoggerFactory loggerFactory = LoggerFactory.Create(builder =>
+        {
+            builder.AddSimpleConsole(options =>
+            {
+                options.SingleLine = true;
+                options.TimestampFormat = "HH:mm:ss ";
+            });
+            builder.SetMinimumLevel(LogLevel.Information);
+        });
+        ILogger logger = loggerFactory.CreateLogger("Passkeys");
+
         var rootCommand = new RootCommand("SpecterOps Passkeys Mythic CLI")
         {
-            PromptCommand.Create(),
-            WaitCommand.Create(),
-            ListCommand.Create()
+            PromptCommand.Create(logger),
+            WaitCommand.Create(logger),
+            ListCommand.Create(logger)
         };
 
         var config = new CommandLineConfiguration(rootCommand);

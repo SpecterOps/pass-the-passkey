@@ -18,7 +18,7 @@ internal static class PromptCommand
     /// Creates the <c>prompt</c> command with options for relying party, challenge, credential scoping,
     /// process kill, flood mode, and authenticator attachment.
     /// </summary>
-    public static Command Create()
+    public static Command Create(ILogger logger)
     {
         var relyingPartyOption = new Option<string>("--relying-party", "-r")
         {
@@ -52,9 +52,9 @@ internal static class PromptCommand
             Description = "Authenticator type hint: SecurityKey, ClientDevice, or Hybrid"
         };
 
-        var spoofOption = new Option<bool>("--spoof", "-s")
+        var hwndOption = new Option<long?>("--hwnd")
         {
-            Description = "Display the prompt in the context of the Chrome/Edge/Firefox/Outlook window if possible"
+            Description = "Window handle for the prompt; 0 to auto-detect Chrome/Edge/Firefox/Outlook"
         };
 
         var command = new Command("prompt", "Prompt the user for a WebAuthn assertion (authentication)")
@@ -65,7 +65,7 @@ internal static class PromptCommand
             killOption,
             floodOption,
             authenticatorOption,
-            spoofOption
+            hwndOption
         };
 
         command.SetAction(parseResult =>
@@ -76,18 +76,7 @@ internal static class PromptCommand
             bool kill = parseResult.GetValue(killOption);
             bool flood = parseResult.GetValue(floodOption);
             PublicKeyCredentialHint authenticator = parseResult.GetValue(authenticatorOption);
-            bool spoof = parseResult.GetValue(spoofOption);
-
-            using ILoggerFactory loggerFactory = LoggerFactory.Create(builder =>
-            {
-                builder.AddSimpleConsole(options =>
-                {
-                    options.SingleLine = true;
-                    options.TimestampFormat = "HH:mm:ss ";
-                });
-                builder.SetMinimumLevel(LogLevel.Information);
-            });
-            ILogger logger = loggerFactory.CreateLogger("Passkeys");
+            long? hwnd = parseResult.GetValue(hwndOption);
 
             byte[] challengeBytes = Base64UrlConverter.FromBase64UrlString(challenge);
 
@@ -108,7 +97,7 @@ internal static class PromptCommand
                 }
             }
 
-            WindowHandle windowHandle = ResolvePromptWindowHandle(logger, spoof);
+            WindowHandle windowHandle = ResolvePromptWindowHandle(logger, hwnd);
 
             if (flood)
             {
@@ -226,11 +215,17 @@ internal static class PromptCommand
         return credential.ToString();
     }
 
-    private static WindowHandle ResolvePromptWindowHandle(ILogger logger, bool spoof)
+    private static WindowHandle ResolvePromptWindowHandle(ILogger logger, long? hwnd)
     {
-        if (!spoof)
+        if (hwnd is null)
         {
             return WindowHandle.ConsoleWindow;
+        }
+
+        if (hwnd != 0)
+        {
+            logger.LogInformation("Using provided window handle {Hwnd}.", hwnd);
+            return new WindowHandle(new IntPtr(hwnd.Value));
         }
 
         WindowHandle? chromeHandle = TryGetMainWindowHandle("chrome");
@@ -261,7 +256,7 @@ internal static class PromptCommand
             return outlookHandle.Value;
         }
 
-        logger.LogInformation("Browser main window not found; using console window handle.");
+        logger.LogInformation("Browser window not found; using main window handle.");
         return WindowHandle.MainWindow;
     }
 
