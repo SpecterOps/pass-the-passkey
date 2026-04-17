@@ -56,8 +56,5 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
-# Fody
-FodyWeavers.xsd
-
 # Claude Code
 /.claude/settings.local.json

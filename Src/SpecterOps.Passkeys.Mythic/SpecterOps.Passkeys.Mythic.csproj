@@ -3,15 +3,16 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net48</TargetFramework>
-    <AssemblyName>Passkeys</AssemblyName>
+    <AssemblyName>SharpPasskeys</AssemblyName>
 
     <!-- Disable the generation of the config file -->
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
-    <AssemblyTitle>Passkeys Mythic CLI</AssemblyTitle>
-    <Product>SpecterOps Passkeys Mythic CLI</Product>
+    <AssemblyTitle>Passkeys CLI</AssemblyTitle>
+    <Product>SpecterOps Passkeys CLI</Product>
     <Version>1.0.0</Version>
-    <!-- CA1848: Use LoggerMessage delegates for performance; CA1873: Avoid expensive logging argument evaluation -->
+    <!-- CA1848: Use LoggerMessage delegates for performance -->
+    <!-- CA1873: Avoid expensive logging argument evaluation -->
     <!-- Acceptable for a short-lived CLI tool with minimal logging -->
     <NoWarn>CA1848;CA1873</NoWarn>
   </PropertyGroup>
@@ -26,14 +27,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Costura.Fody" Version="6.0.0">
+    <PackageReference Include="dnMerge" Version="0.5.15">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="DSInternals.Win32.WebAuthn" Version="2.1.0" />
     <PackageReference Include="System.Formats.Cbor" Version="10.0.2" />
-    <PackageReference Include="Fody" Version="6.9.2">
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.1" />
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta5.25277.114" />
   </ItemGroup>

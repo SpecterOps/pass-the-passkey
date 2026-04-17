@@ -2,14 +2,11 @@
   "version": 1,
   "dependencies": {
     ".NETFramework,Version=v4.8": {
-      "Costura.Fody": {
+      "dnMerge": {
         "type": "Direct",
-        "requested": "[6.0.0, )",
-        "resolved": "6.0.0",
-        "contentHash": "3Uriu9GJABMivG0wXMJs6NQ7FNE3pylir1gZEBAWDvpii3cnrmxXnOG44MMDuIVOIk/Xhef7WZFsaCNV+py9qA==",
-        "dependencies": {
-          "Fody": "6.8.2"
-        }
+        "requested": "[0.5.15, )",
+        "resolved": "0.5.15",
+        "contentHash": "4DqfGKMUY37x8RQS1aMEuEWI+P7T5AVgq740PWZnsgJykl+5ozHxFHj0NuOcTkb2YSie3Hc1YTWWJxS9hCGCEQ=="
       },
       "DSInternals.Win32.WebAuthn": {
         "type": "Direct",
@@ -24,12 +21,6 @@
           "System.IdentityModel.Tokens.Jwt": "8.15.0",
           "System.Text.Json": "9.0.3"
         }
-      },
-      "Fody": {
-        "type": "Direct",
-        "requested": "[6.9.2, )",
-        "resolved": "6.9.2",
-        "contentHash": "YBHobPGogb0vYhGYIxn/ndWqTjNWZveDi5jdjrcshL2vjwU3gQGyDeI7vGgye+2rAM5fGRvlLgNWLW3DpviS/w=="
       },
       "Microsoft.Extensions.Logging.Console": {
         "type": "Direct",

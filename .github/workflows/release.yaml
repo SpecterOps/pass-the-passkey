@@ -34,7 +34,7 @@ jobs:
     - name: Build and Publish Injector ARM64
       run: dotnet publish Src/SpecterOps.Passkeys.Injector --runtime win-arm64 --no-restore
 
-    - name: Build Mythic CLI
+    - name: Build SharpPasskeys CLI
       run: dotnet build Src/SpecterOps.Passkeys.Mythic --configuration Release --no-restore
 
     - name: Extract Versions
@@ -58,10 +58,10 @@ jobs:
         name: PasskeyInjector_v${{ steps.versions.outputs.INJECTOR_VERSION }}_arm64
         path: Build/publish/SpecterOps.Passkeys.Injector/release_win-arm64/*
 
-    - name: Upload Mythic CLI as Artifact
+    - name: Upload SharpPasskeys CLI as Artifact
       uses: actions/upload-artifact@v6
       with:
-        name: PasskeysMythicCLI_v${{ steps.versions.outputs.MYTHIC_VERSION }}
+        name: SharpPasskeys_v${{ steps.versions.outputs.MYTHIC_VERSION }}
         path: Build/bin/SpecterOps.Passkeys.Mythic/release/*
 
     - name: Create GitHub Release
