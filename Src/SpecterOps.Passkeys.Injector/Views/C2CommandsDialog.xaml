@@ -9,7 +9,6 @@
         Width="760"
         MinWidth="650"
         MinHeight="300"
-        SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip"
         d:DataContext="{d:DesignInstance Type=local:C2CommandsDialogViewModel, IsDesignTimeCreatable=False}">
@@ -46,14 +45,29 @@
                     </ComboBox>
                 </StackPanel>
 
-                <!-- Mythic Section -->
-                <GroupBox Header="Mythic Apollo" Margin="0,0,0,8">
+                <!-- Additional options -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <CheckBox Content="Prompt Flood" IsChecked="{Binding PromptFlood}" Margin="0,0,20,0" VerticalAlignment="Center"/>
+                    <CheckBox Content="Kill Credential UI Broker" IsChecked="{Binding KillCredentialUIBroker}" VerticalAlignment="Center"/>
+                    <CheckBox Content="Spoof Window Handle" IsChecked="{Binding SpoofWindowHandle}" Margin="20,0,0,0" VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- SharpPasskeys Standalone CLI Section -->
+                <Expander Header="SharpPasskeys (Standalone CLI)" IsExpanded="False" Margin="0,0,0,8">
                     <StackPanel Margin="8,6,8,6">
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <CheckBox Content="Prompt Flood" IsChecked="{Binding PromptFlood}" Margin="0,0,20,0" VerticalAlignment="Center"/>
-                            <CheckBox Content="Kill Credential UI Broker" IsChecked="{Binding KillCredentialUIBroker}" VerticalAlignment="Center"/>
-                            <CheckBox Content="Spoof Window Handle" IsChecked="{Binding SpoofWindowHandle}" Margin="20,0,0,0" VerticalAlignment="Center"/>
-                        </StackPanel>
+                        <ItemsControl ItemsSource="{Binding StandaloneCommands}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <local:ClipboardEnabledTextBox Text="{Binding Mode=OneWay}" Margin="0,0,0,4"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Expander>
+
+                <!-- SharpPasskeys Mythic Apollo Section -->
+                <Expander Header="SharpPasskeys (Mythic Apollo Agent)" IsExpanded="True" Margin="0,0,0,8">
+                    <StackPanel Margin="8,6,8,6">
                         <ItemsControl ItemsSource="{Binding MythicCommands}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -62,10 +76,10 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </StackPanel>
-                </GroupBox>
+                </Expander>
 
                 <!-- PowerShell Section -->
-                <GroupBox Header="PowerShell" Margin="0,0,0,0">
+                <Expander Header="PowerShell" IsExpanded="False" Margin="0,0,0,0">
                     <StackPanel Margin="8,6,8,6">
                         <ItemsControl ItemsSource="{Binding PowerShellCommands}">
                             <ItemsControl.ItemTemplate>
@@ -75,7 +89,7 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </StackPanel>
-                </GroupBox>
+                </Expander>
             </StackPanel>
         </ScrollViewer>
     </DockPanel>
