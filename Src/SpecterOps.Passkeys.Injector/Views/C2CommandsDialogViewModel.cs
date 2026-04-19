@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace SpecterOps.Passkeys.Injector;
@@ -6,7 +7,7 @@ namespace SpecterOps.Passkeys.Injector;
 /// <summary>
 /// ViewModel for the C2 Commands dialog. Generates CLI commands from assertion request options.
 /// </summary>
-public partial class C2CommandsDialogViewModel : ObservableObject
+public partial class C2CommandsDialogViewModel : ObservableObject, IC2CommandsDialogViewModel
 {
     public static IReadOnlyList<PublicKeyCredentialHint> AuthenticatorTypeHints { get; } =
         Enum.GetValues<PublicKeyCredentialHint>();
@@ -25,7 +26,9 @@ public partial class C2CommandsDialogViewModel : ObservableObject
         [PublicKeyCredentialHint.Hybrid] = nameof(PublicKeyCredentialHint.Hybrid)
     };
 
-    private readonly PublicKeyCredentialRequestOptions _assertionOptions;
+    private readonly string _rpId;
+    private readonly string _challenge;
+    private readonly IReadOnlyList<string> _credentialIds;
 
     /// <summary>
     /// Gets or sets the selected authenticator type hint.
@@ -68,7 +71,25 @@ public partial class C2CommandsDialogViewModel : ObservableObject
 
     public C2CommandsDialogViewModel(PublicKeyCredentialRequestOptions assertionOptions)
     {
-        _assertionOptions = assertionOptions;
+        ArgumentNullException.ThrowIfNull(assertionOptions);
+
+        // Validate all page-controlled inputs once here so the command builders below only work
+        // with trusted values and cannot accidentally emit operator-side injection payloads.
+        _rpId = ValidateRelyingPartyId(assertionOptions.RpId);
+        _challenge = ValidateBase64UrlToken(assertionOptions.Challenge, nameof(assertionOptions.Challenge));
+
+        List<string> credentialIds = [];
+        if (assertionOptions.AllowCredentials is { Length: > 0 } allowCredentials)
+        {
+            foreach (var credential in allowCredentials)
+            {
+                // Credential IDs are copied verbatim into generated commands, so keep the same
+                // allowlist discipline as the challenge field.
+                credentialIds.Add(ValidateBase64UrlToken(credential.Id, nameof(credential.Id)));
+            }
+        }
+
+        _credentialIds = credentialIds;
         _selectedAuthenticatorTypeHint = ResolveDefaultHint(assertionOptions.Hints);
         RebuildAllCommands();
     }
@@ -92,18 +113,13 @@ public partial class C2CommandsDialogViewModel : ObservableObject
     {
         StandaloneCommands.Clear();
 
-        string rpId = _assertionOptions.RpId ?? string.Empty;
-        string challenge = _assertionOptions.Challenge ?? string.Empty;
         string optionalParameters = SharpPasskeysBuildOptionalParameters();
 
-        StandaloneCommands.Add($"SharpPasskeys.exe prompt --relying-party {rpId}{optionalParameters} --challenge {challenge}");
+        StandaloneCommands.Add($"SharpPasskeys.exe prompt --relying-party {_rpId}{optionalParameters} --challenge {_challenge}");
 
-        if (_assertionOptions.AllowCredentials is { Length: > 0 } allowCredentials)
+        foreach (string credentialId in _credentialIds)
         {
-            foreach (var cred in allowCredentials)
-            {
-                StandaloneCommands.Add($"SharpPasskeys.exe prompt --relying-party {rpId} --credential-id {cred.Id}{optionalParameters} --challenge {challenge}");
-            }
+            StandaloneCommands.Add($"SharpPasskeys.exe prompt --relying-party {_rpId} --credential-id {credentialId}{optionalParameters} --challenge {_challenge}");
         }
     }
 
@@ -112,21 +128,16 @@ public partial class C2CommandsDialogViewModel : ObservableObject
         MythicCommands.Clear();
         MythicCommands.Add("register_assembly -existingFile SharpPasskeys.exe");
 
-        string rpId = _assertionOptions.RpId ?? string.Empty;
-        string challenge = _assertionOptions.Challenge ?? string.Empty;
         string optionalParameters = SharpPasskeysBuildOptionalParameters();
-        string baseArgs = $"prompt --relying-party {rpId}{optionalParameters} --challenge {challenge}";
+        string baseArgs = $"prompt --relying-party {_rpId}{optionalParameters} --challenge {_challenge}";
         string baseCommand = $"execute_assembly -Assembly SharpPasskeys.exe -Arguments \"{baseArgs}\"";
 
         MythicCommands.Add(baseCommand);
 
-        if (_assertionOptions.AllowCredentials is { Length: > 0 } allowCredentials)
+        foreach (string credentialId in _credentialIds)
         {
-            foreach (var cred in allowCredentials)
-            {
-                string credArgs = $"prompt --relying-party {rpId} --credential-id {cred.Id}{optionalParameters} --challenge {challenge}";
-                MythicCommands.Add($"execute_assembly -Assembly SharpPasskeys.exe -Arguments \"{credArgs}\"");
-            }
+            string credArgs = $"prompt --relying-party {_rpId} --credential-id {credentialId}{optionalParameters} --challenge {_challenge}";
+            MythicCommands.Add($"execute_assembly -Assembly SharpPasskeys.exe -Arguments \"{credArgs}\"");
         }
     }
 
@@ -135,21 +146,16 @@ public partial class C2CommandsDialogViewModel : ObservableObject
         PowerShellCommands.Clear();
         PowerShellCommands.Add("Import-Module -Name DSInternals.Passkeys");
 
-        string rpId = _assertionOptions.RpId ?? string.Empty;
-        string challenge = _assertionOptions.Challenge ?? string.Empty;
         string hintParameter = s_authenticatorCliMap.TryGetValue(SelectedAuthenticatorTypeHint, out var hintValue)
             ? $" -Hint {hintValue}"
             : string.Empty;
         string windowHandleParameter = SpoofWindowHandle ? " -WindowHandle 0" : string.Empty;
 
-        PowerShellCommands.Add(PowerShellPrependKillBroker(PowerShellWrapWithPromptFlood($"Test-Passkey -RelyingPartyId {rpId}{hintParameter}{windowHandleParameter} -Challenge {challenge}")));
+        PowerShellCommands.Add(PowerShellPrependKillBroker(PowerShellWrapWithPromptFlood($"Test-Passkey -RelyingPartyId {_rpId}{hintParameter}{windowHandleParameter} -Challenge {_challenge}")));
 
-        if (_assertionOptions.AllowCredentials is { Length: > 0 } allowCredentials)
+        foreach (string credentialId in _credentialIds)
         {
-            foreach (var cred in allowCredentials)
-            {
-                PowerShellCommands.Add(PowerShellPrependKillBroker(PowerShellWrapWithPromptFlood($"Test-Passkey -RelyingPartyId {rpId} -CredentialId {cred.Id}{hintParameter}{windowHandleParameter} -Challenge {challenge}")));
-            }
+            PowerShellCommands.Add(PowerShellPrependKillBroker(PowerShellWrapWithPromptFlood($"Test-Passkey -RelyingPartyId {_rpId} -CredentialId {credentialId}{hintParameter}{windowHandleParameter} -Challenge {_challenge}")));
         }
     }
 
@@ -189,6 +195,42 @@ public partial class C2CommandsDialogViewModel : ObservableObject
     {
         return KillCredentialUIBroker ? $"1..2 | % {{ kill -n CredentialUIBroker; sleep 1 }}; {command}" : command;
     }
+
+    private static string ValidateRelyingPartyId(string? rpId)
+    {
+        string safeRpId = rpId?.Trim() ?? string.Empty;
+        if (safeRpId.Length == 0 || !SafeRelyingPartyIdRegex().IsMatch(safeRpId))
+        {
+            throw new ArgumentException("The relying party identifier contains unexpected characters.", nameof(rpId));
+        }
+
+        return safeRpId;
+    }
+
+    private static string ValidateBase64UrlToken(string? value, string fieldName)
+    {
+        string safeValue = value?.Trim() ?? string.Empty;
+        if (safeValue.Length == 0 || !SafeBase64UrlTokenRegex().IsMatch(safeValue))
+        {
+            throw new ArgumentException($"The {fieldName} is not a base64url literal.", fieldName);
+        }
+
+        return safeValue;
+    }
+
+    /// <summary>
+    /// Matches base64url tokens used by WebAuthn for challenge and credential identifier fields,
+    /// allowing only the URL-safe alphabet expected by those values.
+    /// </summary>
+    [GeneratedRegex("^[A-Za-z0-9_-]+$", RegexOptions.CultureInvariant)]
+    private static partial Regex SafeBase64UrlTokenRegex();
+
+    /// <summary>
+    /// Matches RP IDs that look like hostnames or <c>localhost</c>, which is the shape expected
+    /// for relying-party identifiers and excludes arbitrary shell-relevant text.
+    /// </summary>
+    [GeneratedRegex("^(?=.{1,253}$)(?:localhost|(?:(?!-)[A-Za-z0-9-]{1,63}(?<!-))(?:\\.(?:(?!-)[A-Za-z0-9-]{1,63}(?<!-)))*?)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex SafeRelyingPartyIdRegex();
 
     private static PublicKeyCredentialHint ResolveDefaultHint(string[]? hints)
     {

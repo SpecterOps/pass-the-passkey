@@ -13,13 +13,13 @@ public partial class MainWindow : Window
 {
     private const string WebView2ProfileName = "PasskeyInjector";
     private const string WebAuthnBridgeObjectName = "webAuthnBridge";
-    private readonly MainWindowViewModel _viewModel;
+    private readonly IMainWindowViewModel _viewModel;
 
     public MainWindow()
     {
         InitializeComponent();
 
-        _viewModel = Ioc.Default.GetRequiredService<MainWindowViewModel>();
+        _viewModel = Ioc.Default.GetRequiredService<IMainWindowViewModel>();
         DataContext = _viewModel;
         _viewModel.CredentialRequested += ShowAssertionDialog;
         _viewModel.CredentialCreationRequested += ShowAttestationDialog;
@@ -38,9 +38,24 @@ public partial class MainWindow : Window
         webView.CoreWebView2.SourceChanged += OnSourceChanged;
         webView.CoreWebView2.NavigationStarting += OnNavigationStarting;
 
-        // Register the JavaScript-C# bridge
-        WebAuthnBridge webAuthnBridge = Ioc.Default.GetRequiredService<WebAuthnBridge>();
+        // Register the JavaScript-C# bridge on the main frame
+        IWebAuthnBridge webAuthnBridge = Ioc.Default.GetRequiredService<IWebAuthnBridge>();
         webView.CoreWebView2.AddHostObjectToScript(WebAuthnBridgeObjectName, webAuthnBridge);
+
+        // Also register on each iframe as it is created. The injected script runs in every frame,
+        // but AddHostObjectToScript only exposes the object to the main frame; without this,
+        // bridge calls from iframes fail with "Element not found" (0x80070490).
+        webView.CoreWebView2.FrameCreated += (_, args) =>
+        {
+            try
+            {
+                args.Frame.AddHostObjectToScript(WebAuthnBridgeObjectName, webAuthnBridge, ["*"]);
+            }
+            catch
+            {
+                // Ignore failures; the iframe simply won't have the bridge and will fall back to native WebAuthn.
+            }
+        };
 
         // Inject the JavaScript code from the embedded resource
         await webView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(_viewModel.LoadEmbeddedScript());

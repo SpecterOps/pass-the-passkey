@@ -9,7 +9,7 @@ namespace SpecterOps.Passkeys.Injector;
 /// </summary>
 [ClassInterface(ClassInterfaceType.AutoDual)]
 [ComVisible(true)]
-public class WebAuthnBridge
+public class WebAuthnBridge : IWebAuthnBridge
 {
     /// <summary>
     /// Event raised when a credential is requested from JavaScript.

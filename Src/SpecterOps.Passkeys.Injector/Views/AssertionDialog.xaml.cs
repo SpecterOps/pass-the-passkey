@@ -9,7 +9,7 @@ namespace SpecterOps.Passkeys.Injector;
 /// </summary>
 public partial class AssertionDialog : Window
 {
-    private readonly AssertionDialogViewModel? _viewModel;
+    private readonly IAssertionDialogViewModel? _viewModel;
 
     /// <summary>
     /// Initializes a new instance of the AssertionDialog.
@@ -19,7 +19,7 @@ public partial class AssertionDialog : Window
         InitializeComponent();
 
         // Bind the data context to the ViewModel
-        _viewModel = Ioc.Default.GetService<AssertionDialogViewModel>();
+        _viewModel = Ioc.Default.GetService<IAssertionDialogViewModel>();
         if (_viewModel != null)
         {
             _viewModel.OnSubmit += OnSubmit;

@@ -4,13 +4,14 @@ using System.Globalization;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SpecterOps.Passkeys.Injector.Cryptography;
 
 namespace SpecterOps.Passkeys.Injector;
 
 /// <summary>
 /// ViewModel for the AttestationDialog.
 /// </summary>
-public partial class AttestationDialogViewModel : ObservableValidator
+public partial class AttestationDialogViewModel : ObservableValidator, IAttestationDialogViewModel
 {
     /// <summary>
     /// Event raised when the user submits a valid response.
@@ -144,6 +145,24 @@ public partial class AttestationDialogViewModel : ObservableValidator
     [ObservableProperty]
     private PublicKeyCredentialCreationOptions? _attestationOptions;
 
+    /// <summary>
+    /// Gets or sets the time at which the attestation dialog was populated.
+    /// </summary>
+    [ObservableProperty]
+    private DateTime? _attestationStartTime;
+
+    /// <summary>
+    /// Gets or sets the absolute time at which the WebAuthn request times out (start time + request timeout).
+    /// </summary>
+    [ObservableProperty]
+    private DateTime? _requestExpiration;
+
+    /// <summary>
+    /// Gets or sets the absolute time at which the challenge expires, parsed from its JWT <c>exp</c> claim when available.
+    /// </summary>
+    [ObservableProperty]
+    private DateTime? _challengeExpiration;
+
     private static readonly JsonSerializerOptions s_jsonSerializerOptions = new()
     {
         WriteIndented = true
@@ -227,6 +246,13 @@ public partial class AttestationDialogViewModel : ObservableValidator
 
         Hints = value.Hints;
         AttestationFormats = value.AttestationFormats;
+
+        // Timer anchors: record when the dialog was populated and compute expiration endpoints.
+        AttestationStartTime = DateTime.Now;
+        RequestExpiration = value.Timeout.HasValue
+            ? AttestationStartTime.Value.AddMilliseconds(value.Timeout.Value)
+            : null;
+        ChallengeExpiration = ChallengeJwtExpiration.TryGet(Challenge);
     }
 
     /// <summary>
@@ -254,6 +280,9 @@ public partial class AttestationDialogViewModel : ObservableValidator
         AttestationFormats = null;
         AttestationOptionsJson = string.Empty;
         AttestationOptions = null;
+        AttestationStartTime = null;
+        RequestExpiration = null;
+        ChallengeExpiration = null;
         PublicKeyCredentialJson = null;
         ValidateProperty(PublicKeyCredentialJson, nameof(PublicKeyCredentialJson));
         SubmitCommand.NotifyCanExecuteChanged();

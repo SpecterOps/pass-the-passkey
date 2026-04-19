@@ -21,17 +21,17 @@ namespace SpecterOps.Passkeys.Injector
         private static void ConfigureServices()
         {
             var provider = new ServiceContainer();
-            var webAuthnBridge = new WebAuthnBridge();
-            var assertionViewModel = new AssertionDialogViewModel();
-            var attestationViewModel = new AttestationDialogViewModel();
-            var tokenDialogViewModel = new TokenDialogViewModel();
-            var mainWindowViewModel = new MainWindowViewModel(assertionViewModel, attestationViewModel, tokenDialogViewModel, webAuthnBridge);
+            IWebAuthnBridge webAuthnBridge = new WebAuthnBridge();
+            IAssertionDialogViewModel assertionViewModel = new AssertionDialogViewModel();
+            IAttestationDialogViewModel attestationViewModel = new AttestationDialogViewModel();
+            ITokenDialogViewModel tokenDialogViewModel = new TokenDialogViewModel();
+            IMainWindowViewModel mainWindowViewModel = new MainWindowViewModel(assertionViewModel, attestationViewModel, tokenDialogViewModel, webAuthnBridge);
 
-            provider.AddService(typeof(AssertionDialogViewModel), assertionViewModel);
-            provider.AddService(typeof(AttestationDialogViewModel), attestationViewModel);
-            provider.AddService(typeof(TokenDialogViewModel), tokenDialogViewModel);
-            provider.AddService(typeof(MainWindowViewModel), mainWindowViewModel);
-            provider.AddService(typeof(WebAuthnBridge), webAuthnBridge);
+            provider.AddService(typeof(IAssertionDialogViewModel), assertionViewModel);
+            provider.AddService(typeof(IAttestationDialogViewModel), attestationViewModel);
+            provider.AddService(typeof(ITokenDialogViewModel), tokenDialogViewModel);
+            provider.AddService(typeof(IMainWindowViewModel), mainWindowViewModel);
+            provider.AddService(typeof(IWebAuthnBridge), webAuthnBridge);
             Ioc.Default.ConfigureServices(provider);
         }
     }

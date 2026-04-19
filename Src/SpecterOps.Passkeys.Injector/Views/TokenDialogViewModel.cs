@@ -4,7 +4,7 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 
 namespace SpecterOps.Passkeys.Injector;
 
-public sealed partial class TokenDialogViewModel : ObservableObject
+public sealed partial class TokenDialogViewModel : ObservableObject, ITokenDialogViewModel
 {
     private static readonly JsonSerializerOptions TokenResponseSerializerOptions = new()
     {

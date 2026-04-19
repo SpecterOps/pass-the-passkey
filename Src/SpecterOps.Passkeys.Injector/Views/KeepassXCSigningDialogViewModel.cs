@@ -7,7 +7,7 @@ using SpecterOps.Passkeys.Injector.Cryptography;
 
 namespace SpecterOps.Passkeys.Injector;
 
-public partial class KeepassXCSigningDialogViewModel : ObservableValidator
+public partial class KeepassXCSigningDialogViewModel : ObservableValidator, IKeepassXCSigningDialogViewModel
 {
     private readonly string _challenge;
     private readonly string _rpId;

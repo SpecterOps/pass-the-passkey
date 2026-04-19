@@ -16,10 +16,33 @@
         <local:PublicKeyCredentialHintDescriptionConverter x:Key="PublicKeyCredentialHintDescriptionConverter"/>
     </Window.Resources>
 
-    <DockPanel Margin="12" LastChildFill="True">
+    <DockPanel LastChildFill="True">
+
+        <!-- Main Toolbar (parameters) -->
+        <ToolBarTray DockPanel.Dock="Top" IsLocked="True">
+            <ToolBar>
+                <TextBlock Text="Authenticator Type Hint:" VerticalAlignment="Center" Margin="4,0,6,0"/>
+                <ComboBox ItemsSource="{x:Static local:C2CommandsDialogViewModel.AuthenticatorTypeHints}"
+                          SelectedItem="{Binding SelectedAuthenticatorTypeHint}"
+                          MinWidth="200"
+                          VerticalAlignment="Center">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Converter={StaticResource PublicKeyCredentialHintDescriptionConverter}}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <Separator/>
+                <CheckBox Content="Prompt Flood" IsChecked="{Binding PromptFlood}" VerticalAlignment="Center" Margin="4,0"/>
+                <CheckBox Content="Kill Credential UI Broker" IsChecked="{Binding KillCredentialUIBroker}" VerticalAlignment="Center" Margin="4,0"/>
+                <CheckBox Content="Spoof Window Handle" IsChecked="{Binding SpoofWindowHandle}" VerticalAlignment="Center" Margin="4,0"/>
+            </ToolBar>
+        </ToolBarTray>
+
+        <DockPanel Margin="12,12,0,12" LastChildFill="True">
 
         <!-- Close Button (pinned to bottom) -->
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,12,0">
             <Button IsCancel="True" MinWidth="100">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE711;" Margin="0,0,6,0" VerticalAlignment="Center"/>
@@ -30,28 +53,7 @@
 
         <!-- Scrollable content -->
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-            <StackPanel>
-                <!-- Credential Type Hint -->
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <TextBlock Text="Authenticator Type Hint:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <ComboBox ItemsSource="{x:Static local:C2CommandsDialogViewModel.AuthenticatorTypeHints}"
-                              SelectedItem="{Binding SelectedAuthenticatorTypeHint}"
-                              MinWidth="200">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding Converter={StaticResource PublicKeyCredentialHintDescriptionConverter}}"/>
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                </StackPanel>
-
-                <!-- Additional options -->
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <CheckBox Content="Prompt Flood" IsChecked="{Binding PromptFlood}" Margin="0,0,20,0" VerticalAlignment="Center"/>
-                    <CheckBox Content="Kill Credential UI Broker" IsChecked="{Binding KillCredentialUIBroker}" VerticalAlignment="Center"/>
-                    <CheckBox Content="Spoof Window Handle" IsChecked="{Binding SpoofWindowHandle}" Margin="20,0,0,0" VerticalAlignment="Center"/>
-                </StackPanel>
-
+            <StackPanel Margin="0,0,12,0">
                 <!-- SharpPasskeys Standalone CLI Section -->
                 <Expander Header="SharpPasskeys (Standalone CLI)" IsExpanded="False" Margin="0,0,0,8">
                     <StackPanel Margin="8,6,8,6">
@@ -92,5 +94,6 @@
                 </Expander>
             </StackPanel>
         </ScrollViewer>
+        </DockPanel>
     </DockPanel>
 </Window>

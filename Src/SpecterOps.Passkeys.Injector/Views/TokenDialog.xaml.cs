@@ -6,29 +6,23 @@ namespace SpecterOps.Passkeys.Injector;
 
 public partial class TokenDialog : Window
 {
-    private readonly TokenDialogViewModel? _viewModel;
+    private readonly ITokenDialogViewModel? _viewModel;
 
     public TokenDialog()
     {
         InitializeComponent();
-        _viewModel = Ioc.Default.GetService<TokenDialogViewModel>();
+        _viewModel = Ioc.Default.GetService<ITokenDialogViewModel>();
         DataContext = _viewModel;
     }
 
-    private void OnCopyAccessTokenClick(object sender, RoutedEventArgs e)
-    {
-        CopyTokenToClipboard((DataContext as TokenDialogViewModel)?.AccessToken);
-    }
+    private void OnCopyAccessTokenClick(object sender, RoutedEventArgs e) =>
+        CopyTokenToClipboard(_viewModel?.AccessToken);
 
-    private void OnCopyRefreshTokenClick(object sender, RoutedEventArgs e)
-    {
-        CopyTokenToClipboard((DataContext as TokenDialogViewModel)?.RefreshToken);
-    }
+    private void OnCopyRefreshTokenClick(object sender, RoutedEventArgs e) =>
+        CopyTokenToClipboard(_viewModel?.RefreshToken);
 
-    private void OnCopyIdTokenClick(object sender, RoutedEventArgs e)
-    {
-        CopyTokenToClipboard((DataContext as TokenDialogViewModel)?.IdToken);
-    }
+    private void OnCopyIdTokenClick(object sender, RoutedEventArgs e) =>
+        CopyTokenToClipboard(_viewModel?.IdToken);
 
     private static void CopyTokenToClipboard(string? token)
     {

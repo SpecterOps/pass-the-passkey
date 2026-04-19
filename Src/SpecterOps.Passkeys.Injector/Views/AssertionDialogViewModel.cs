@@ -4,13 +4,14 @@ using System.Globalization;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using SpecterOps.Passkeys.Injector.Cryptography;
 
 namespace SpecterOps.Passkeys.Injector;
 
 /// <summary>
 /// ViewModel for the AssertionDialog.
 /// </summary>
-public partial class AssertionDialogViewModel : ObservableValidator
+public partial class AssertionDialogViewModel : ObservableValidator, IAssertionDialogViewModel
 {
     /// <summary>
     /// Event raised when the user submits a valid response.
@@ -90,6 +91,24 @@ public partial class AssertionDialogViewModel : ObservableValidator
     [ObservableProperty]
     private PublicKeyCredentialRequestOptions? _assertionOptions;
 
+    /// <summary>
+    /// Gets or sets the time at which the assertion dialog was populated.
+    /// </summary>
+    [ObservableProperty]
+    private DateTime? _assertionStartTime;
+
+    /// <summary>
+    /// Gets or sets the absolute time at which the WebAuthn request times out (start time + request timeout).
+    /// </summary>
+    [ObservableProperty]
+    private DateTime? _requestExpiration;
+
+    /// <summary>
+    /// Gets or sets the absolute time at which the challenge expires, parsed from its JWT <c>exp</c> claim when available.
+    /// </summary>
+    [ObservableProperty]
+    private DateTime? _challengeExpiration;
+
     private static readonly JsonSerializerOptions s_jsonSerializerOptions = new()
     {
         WriteIndented = true
@@ -151,6 +170,13 @@ public partial class AssertionDialogViewModel : ObservableValidator
         Extensions = value.Extensions.HasValue
             ? value.Extensions.Value.GetRawText()
             : string.Empty;
+
+        // Timer anchors: record when the dialog was populated and compute expiration endpoints.
+        AssertionStartTime = DateTime.Now;
+        RequestExpiration = value.Timeout.HasValue
+            ? AssertionStartTime.Value.AddMilliseconds(value.Timeout.Value)
+            : null;
+        ChallengeExpiration = ChallengeJwtExpiration.TryGet(Challenge);
     }
 
     /// <summary>
@@ -168,6 +194,9 @@ public partial class AssertionDialogViewModel : ObservableValidator
         UserVerification = string.Empty;
         AssertionOptionsJson = string.Empty;
         AssertionOptions = null;
+        AssertionStartTime = null;
+        RequestExpiration = null;
+        ChallengeExpiration = null;
         PublicKeyCredentialJson = null;
         ValidateProperty(PublicKeyCredentialJson, nameof(PublicKeyCredentialJson));
         SubmitCommand.NotifyCanExecuteChanged();

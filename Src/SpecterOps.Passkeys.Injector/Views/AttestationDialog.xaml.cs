@@ -9,7 +9,7 @@ namespace SpecterOps.Passkeys.Injector;
 /// </summary>
 public partial class AttestationDialog : Window
 {
-    private readonly AttestationDialogViewModel? _viewModel;
+    private readonly IAttestationDialogViewModel? _viewModel;
 
     /// <summary>
     /// Initializes a new instance of the AttestationDialog.
@@ -19,7 +19,7 @@ public partial class AttestationDialog : Window
         InitializeComponent();
 
         // Bind the data context to the ViewModel
-        _viewModel = Ioc.Default.GetService<AttestationDialogViewModel>();
+        _viewModel = Ioc.Default.GetService<IAttestationDialogViewModel>();
         if (_viewModel != null)
         {
             _viewModel.OnSubmit += OnSubmit;

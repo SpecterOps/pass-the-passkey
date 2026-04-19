@@ -13,12 +13,12 @@ namespace SpecterOps.Passkeys.Injector;
 /// <summary>
 /// ViewModel for the MainWindow.
 /// </summary>
-public partial class MainWindowViewModel : ObservableObject
+public partial class MainWindowViewModel : ObservableObject, IMainWindowViewModel
 {
     private static readonly HttpClient s_httpClient = new();
-    private readonly AssertionDialogViewModel _assertionViewModel;
-    private readonly AttestationDialogViewModel _attestationViewModel;
-    private readonly TokenDialogViewModel _tokenViewModel;
+    private readonly IAssertionDialogViewModel _assertionViewModel;
+    private readonly IAttestationDialogViewModel _attestationViewModel;
+    private readonly ITokenDialogViewModel _tokenViewModel;
     public string DefaultBrowserUrl { get; } = "about:blank";
     public string DefaultAddressBarText { get; } = "https://";
 
@@ -38,7 +38,7 @@ public partial class MainWindowViewModel : ObservableObject
 
     public ObservableCollection<MicrosoftApp> MicrosoftApps { get; } = MicrosoftApp.LoadMicrosoftApps();
 
-    public MainWindowViewModel(AssertionDialogViewModel assertionViewModel, AttestationDialogViewModel attestationViewModel, TokenDialogViewModel tokenViewModel, WebAuthnBridge bridge)
+    public MainWindowViewModel(IAssertionDialogViewModel assertionViewModel, IAttestationDialogViewModel attestationViewModel, ITokenDialogViewModel tokenViewModel, IWebAuthnBridge bridge)
     {
         ArgumentNullException.ThrowIfNull(assertionViewModel);
         ArgumentNullException.ThrowIfNull(attestationViewModel);

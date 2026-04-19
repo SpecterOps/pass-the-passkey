@@ -46,7 +46,7 @@
         </Style>
     </Window.Resources>
 
-    <DockPanel Margin="16" LastChildFill="True">
+    <DockPanel Margin="16,16,0,16" LastChildFill="True">
 
         <Button x:Name="SubmitButton"
                 MinWidth="100"
@@ -55,7 +55,7 @@
                 Command="{Binding SubmitCommand}"
                 HorizontalAlignment="Center"
                 DockPanel.Dock="Bottom"
-                Margin="0,8,0,0"
+                Margin="0,8,16,0"
                 TabIndex="1">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE724;" Margin="0,0,6,0" VerticalAlignment="Center"/>
@@ -64,7 +64,7 @@
         </Button>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel>
+        <StackPanel Margin="0,0,16,0">
 
             <!-- Request Section -->
             <Expander Header="Request (Parsed)" IsExpanded="True" ExpandDirection="Down" Margin="0,0,0,8">
@@ -125,7 +125,8 @@
                                   CellStyle="{StaticResource ReadOnlyDataGridCellStyle}"
                                   HeadersVisibility="Column"
                                   GridLinesVisibility="Horizontal"
-                                  MaxHeight="150"
+                                  ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                  VerticalAlignment="Top"
                                   TabIndex="2">
                             <DataGrid.Columns>
                                 <DataGridTemplateColumn Header="Id" Width="*">
@@ -161,17 +162,22 @@
             </Expander>
 
             <!-- Request (JSON) Section -->
-            <Expander Header="Request (JSON)" IsExpanded="False" ExpandDirection="Down" Margin="0,0,0,8" MaxHeight="220">
+            <Expander Header="Request (JSON)" IsExpanded="False" ExpandDirection="Down" Margin="0,0,0,8">
                 <TextBox Text="{Binding AssertionOptionsJson}"
                              IsReadOnly="True"
                              AcceptsReturn="True"
                              AcceptsTab="True"
                              MinLines="3"
-                             MinHeight="120"
-                             VerticalScrollBarVisibility="Auto"
+                             VerticalScrollBarVisibility="Disabled"
                              HorizontalScrollBarVisibility="Auto"
                              TextWrapping="NoWrap"
                              FontFamily="Consolas"/>
+            </Expander>
+
+            <!-- Timers Section -->
+            <Expander Header="Timers" IsExpanded="True" ExpandDirection="Down" Margin="0,0,0,8">
+                <local:TimersControl RequestExpiration="{Binding RequestExpiration}"
+                                     ChallengeExpiration="{Binding ChallengeExpiration}"/>
             </Expander>
 
             <Expander Header="Response (JSON)" IsExpanded="True" ExpandDirection="Down">
