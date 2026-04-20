@@ -36,7 +36,7 @@
                 MinWidth="160"
                 Margin="0,0,8,0"
                 Visibility="{Binding IsAccessTokenPresent, Converter={StaticResource BooleanToVisibilityConverter}}"
-                Click="OnCopyAccessTokenClick">
+                Command="{Binding CopyAccessTokenCommand}">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8C8;" Margin="0,0,6,0" VerticalAlignment="Center" />
                     <TextBlock Text="Copy Access Token" />
@@ -46,7 +46,7 @@
                 MinWidth="160"
                 Margin="0,0,8,0"
                 Visibility="{Binding IsRefreshTokenPresent, Converter={StaticResource BooleanToVisibilityConverter}}"
-                Click="OnCopyRefreshTokenClick">
+                Command="{Binding CopyRefreshTokenCommand}">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8C8;" Margin="0,0,6,0" VerticalAlignment="Center" />
                     <TextBlock Text="Copy Refresh Token" />
@@ -56,7 +56,7 @@
                 MinWidth="150"
                 Margin="0,0,8,0"
                 Visibility="{Binding IsIdTokenPresent, Converter={StaticResource BooleanToVisibilityConverter}}"
-                Click="OnCopyIdTokenClick">
+                Command="{Binding CopyIdTokenCommand}">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8C8;" Margin="0,0,6,0" VerticalAlignment="Center" />
                     <TextBlock Text="Copy ID Token" />

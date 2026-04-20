@@ -13,15 +13,28 @@ namespace SpecterOps.Passkeys.Injector;
 /// </summary>
 public partial class AssertionDialogViewModel : ObservableValidator, IAssertionDialogViewModel
 {
+    private readonly IClipboardService _clipboardService;
+
     /// <summary>
     /// Event raised when the user submits a valid response.
     /// </summary>
     public event EventHandler? OnSubmit;
 
     /// <summary>
-    /// Callback invoked to retrieve the current clipboard text. Returns null if the clipboard contains no text.
+    /// Initializes a new instance of the <see cref="AssertionDialogViewModel"/> class.
     /// </summary>
-    public Func<string?>? GetClipboardText { get; set; }
+    public AssertionDialogViewModel()
+        : this(new ClipboardService())
+    {
+    }
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AssertionDialogViewModel"/> class.
+    /// </summary>
+    public AssertionDialogViewModel(IClipboardService clipboardService)
+    {
+        _clipboardService = clipboardService;
+    }
 
     /// <summary>
     /// Gets or sets the relying party identifier.
@@ -208,7 +221,7 @@ public partial class AssertionDialogViewModel : ObservableValidator, IAssertionD
     [RelayCommand]
     private void PasteResponse()
     {
-        string? pastedText = GetClipboardText?.Invoke();
+        string? pastedText = _clipboardService.GetText();
         if (!string.IsNullOrEmpty(pastedText))
         {
             PublicKeyCredentialJson = NormalizeJson(pastedText);

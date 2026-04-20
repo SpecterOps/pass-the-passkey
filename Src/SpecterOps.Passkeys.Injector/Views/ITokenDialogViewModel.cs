@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace SpecterOps.Passkeys.Injector;
 
@@ -27,6 +28,15 @@ public interface ITokenDialogViewModel : INotifyPropertyChanged
 
     /// <summary>Gets a value indicating whether a refresh token is available.</summary>
     bool IsRefreshTokenPresent { get; }
+
+    /// <summary>Gets the command that copies the access token to the clipboard.</summary>
+    IRelayCommand CopyAccessTokenCommand { get; }
+
+    /// <summary>Gets the command that copies the refresh token to the clipboard.</summary>
+    IRelayCommand CopyRefreshTokenCommand { get; }
+
+    /// <summary>Gets the command that copies the ID token to the clipboard.</summary>
+    IRelayCommand CopyIdTokenCommand { get; }
 
     /// <summary>Gets or sets the raw token response.</summary>
     string TokenResponse { get; set; }

@@ -23,7 +23,6 @@ public partial class AssertionDialog : Window
         if (_viewModel != null)
         {
             _viewModel.OnSubmit += OnSubmit;
-            _viewModel.GetClipboardText = () => Clipboard.ContainsText() ? Clipboard.GetText() : null;
         }
         DataContext = _viewModel;
 
@@ -112,7 +111,6 @@ public partial class AssertionDialog : Window
             }
 
             _viewModel.OnSubmit -= OnSubmit;
-            _viewModel.GetClipboardText = null;
         }
     }
 }

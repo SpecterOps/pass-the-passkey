@@ -14,11 +14,6 @@ public interface IAssertionDialogViewModel : INotifyPropertyChanged
     /// </summary>
     event EventHandler? OnSubmit;
 
-    /// <summary>
-    /// Gets or sets the callback used to read text from the clipboard.
-    /// </summary>
-    Func<string?>? GetClipboardText { get; set; }
-
     /// <summary>Gets or sets the relying party identifier.</summary>
     string RpId { get; set; }
 
