@@ -13,6 +13,8 @@ namespace SpecterOps.Passkeys.Injector;
 /// </summary>
 public partial class AttestationDialogViewModel : ObservableValidator, IAttestationDialogViewModel
 {
+    private readonly IClipboardService _clipboardService;
+
     /// <summary>
     /// Gets or sets the relying party identifier.
     /// </summary>
@@ -164,8 +166,13 @@ public partial class AttestationDialogViewModel : ObservableValidator, IAttestat
     };
 
     public AttestationDialogViewModel()
+        : this(new ClipboardService())
     {
-        SubmitCommand = new RelayCommand<Action?>(Submit, _ => CanSubmit());
+    }
+
+    public AttestationDialogViewModel(IClipboardService clipboardService)
+    {
+        _clipboardService = clipboardService;
     }
 
     /// <summary>
@@ -255,10 +262,22 @@ public partial class AttestationDialogViewModel : ObservableValidator, IAttestat
     }
 
     /// <summary>
+    /// Pastes and normalizes JSON from the clipboard into the response field.
+    /// </summary>
+    [RelayCommand]
+    private void PasteResponse()
+    {
+        string? pastedText = _clipboardService.GetText();
+        if (!string.IsNullOrEmpty(pastedText))
+        {
+            PublicKeyCredentialJson = NormalizeResponseJson(pastedText);
+        }
+    }
+
+    /// <summary>
     /// Submits the credential response if valid.
     /// </summary>
-    public IRelayCommand SubmitCommand { get; }
-
+    [RelayCommand(CanExecute = nameof(CanSubmit))]
     private void Submit(Action? onSubmit)
     {
         onSubmit?.Invoke();
@@ -284,6 +303,27 @@ public partial class AttestationDialogViewModel : ObservableValidator, IAttestat
     public static string PrettyPrintJson(string value)
     {
         string trimmed = value.Trim();
+
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(trimmed);
+            return JsonSerializer.Serialize(doc.RootElement, s_jsonSerializerOptions);
+        }
+        catch (JsonException)
+        {
+            return trimmed;
+        }
+    }
+
+    private static string NormalizeResponseJson(string value)
+    {
+        // Match the assertion dialog's clipboard flow so pasted event-log fragments still clean up well.
+        string trimmed = value.Trim().Replace(" ", null).Replace("\r\n", null).TrimStart('"', '>').TrimEnd('<', '/');
 
         if (string.IsNullOrWhiteSpace(trimmed))
         {

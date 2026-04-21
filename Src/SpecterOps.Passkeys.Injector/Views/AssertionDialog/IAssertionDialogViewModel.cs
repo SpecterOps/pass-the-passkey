@@ -61,6 +61,6 @@ public interface IAssertionDialogViewModel : INotifyPropertyChanged
     IRelayCommand ShowC2CommandsCommand { get; }
 
     /// <summary>Gets the command that submits the dialog.</summary>
-    IRelayCommand SubmitCommand { get; }
+    IRelayCommand<Action?> SubmitCommand { get; }
 
 }

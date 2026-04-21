@@ -42,7 +42,6 @@ public partial class AssertionDialogViewModel : ObservableValidator, IAssertionD
         _clipboardService = clipboardService;
         _keepassXCSigningDialogService = keepassXCSigningDialogService;
         _c2CommandsDialogService = c2CommandsDialogService;
-        SubmitCommand = new RelayCommand<Action?>(Submit, _ => CanSubmit());
     }
 
     /// <summary>
@@ -243,8 +242,7 @@ public partial class AssertionDialogViewModel : ObservableValidator, IAssertionD
     /// <summary>
     /// Submits the credential response if valid.
     /// </summary>
-    public IRelayCommand SubmitCommand { get; }
-
+    [RelayCommand(CanExecute = nameof(CanSubmit))]
     private void Submit(Action? onSubmit)
     {
         onSubmit?.Invoke();

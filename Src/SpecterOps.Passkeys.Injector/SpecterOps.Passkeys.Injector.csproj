@@ -31,6 +31,7 @@
     <TypeScriptSourceMap>false</TypeScriptSourceMap>
     <TypeScriptGeneratesDeclarations>false</TypeScriptGeneratesDeclarations>
     <TypeScriptOutDir>.</TypeScriptOutDir>
+    <TypeScriptRootDir>.</TypeScriptRootDir>
     <TypeScriptSkipLibCheck>true</TypeScriptSkipLibCheck>
     <TypeScriptNoUnusedLocals>true</TypeScriptNoUnusedLocals>
     <TypeScriptNoUnusedParameters>true</TypeScriptNoUnusedParameters>
@@ -54,8 +55,8 @@
       <DependentUpon>WebAuthnBridge.ts</DependentUpon>
     </EmbeddedResource>
     <!-- Embed JSON config files -->
-    <EmbeddedResource Include="Bookmarks.json" />
-    <EmbeddedResource Include="MicrosoftApps.json" />
+    <EmbeddedResource Include="MenuItems\Bookmarks.json" />
+    <EmbeddedResource Include="MenuItems\MicrosoftApps.json" />
     <!-- Include icon as resource for WPF window -->
     <Resource Include="Lock.ico" />
   </ItemGroup>

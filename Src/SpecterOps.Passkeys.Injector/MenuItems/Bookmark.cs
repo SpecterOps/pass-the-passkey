@@ -40,7 +40,7 @@ public sealed partial class Bookmark
 
     public static ObservableCollection<Bookmark> LoadBookmarks()
     {
-        const string resourceName = "SpecterOps.Passkeys.Injector.Bookmarks.json";
+        const string resourceName = "SpecterOps.Passkeys.Injector.MenuItems.Bookmarks.json";
         using Stream? stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName);
         if (stream is null)
         {

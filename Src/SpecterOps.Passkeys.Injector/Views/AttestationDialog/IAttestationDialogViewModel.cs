@@ -82,6 +82,6 @@ public interface IAttestationDialogViewModel : INotifyPropertyChanged
     DateTime? ChallengeExpiration { get; set; }
 
     /// <summary>Gets the command that submits the dialog.</summary>
-    IRelayCommand SubmitCommand { get; }
+    IRelayCommand<Action?> SubmitCommand { get; }
 
 }

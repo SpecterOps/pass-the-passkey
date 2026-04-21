@@ -36,7 +36,7 @@ public sealed class AssertionDialogService : IAssertionDialogService
     {
         ArgumentNullException.ThrowIfNull(optionsJson);
 
-        IAssertionDialogViewModel viewModel = new AssertionDialogViewModel(
+        AssertionDialogViewModel viewModel = new(
             _clipboardService,
             _keepassXCSigningDialogService,
             _c2CommandsDialogService)

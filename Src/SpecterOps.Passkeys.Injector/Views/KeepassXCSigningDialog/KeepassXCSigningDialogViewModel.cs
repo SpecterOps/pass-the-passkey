@@ -58,7 +58,6 @@ public partial class KeepassXCSigningDialogViewModel : ObservableValidator, IKee
         _rpId = rpId;
         _allowCredentials = allowCredentials;
         _userVerified = userVerification is not "discouraged";
-        SignCommand = new RelayCommand<Action?>(Sign, _ => CanSign());
     }
 
     [RelayCommand]
@@ -78,8 +77,7 @@ public partial class KeepassXCSigningDialogViewModel : ObservableValidator, IKee
         if (Counter > 0u) Counter--;
     }
 
-    public IRelayCommand SignCommand { get; }
-
+    [RelayCommand(CanExecute = nameof(CanSign))]
     private void Sign(Action? onSubmit)
     {
         if (_loadedPasskey == null) return;

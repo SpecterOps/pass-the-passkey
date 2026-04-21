@@ -19,13 +19,20 @@ public partial class MainWindowViewModel : ObservableObject, IMainWindowViewMode
     private readonly IAssertionDialogService _assertionDialogService;
     private readonly IAttestationDialogService _attestationDialogService;
     private readonly ITokenDialogService _tokenDialogService;
+
+    /// <inheritdoc />
     public string DefaultBrowserUrl { get; } = "about:blank";
+
+    /// <inheritdoc />
     public string DefaultAddressBarText { get; } = "https://";
 
+    /// <inheritdoc />
     public ObservableCollection<Bookmark> Bookmarks { get; } = Bookmark.LoadBookmarks();
 
+    /// <inheritdoc />
     public MicrosoftApp? ActiveMicrosoftRedirectListener { get; set; }
 
+    /// <inheritdoc />
     public ObservableCollection<MicrosoftApp> MicrosoftApps { get; } = MicrosoftApp.LoadMicrosoftApps();
 
     public MainWindowViewModel(
@@ -69,6 +76,7 @@ public partial class MainWindowViewModel : ObservableObject, IMainWindowViewMode
         return _attestationDialogService.Show(optionsJson);
     }
 
+    /// <inheritdoc />
     public async Task<bool> TryHandleOAuthRedirectAsync(string uri, Action? cancelNavigation = null)
     {
         if (ActiveMicrosoftRedirectListener is null)
@@ -140,6 +148,7 @@ public partial class MainWindowViewModel : ObservableObject, IMainWindowViewMode
         return true;
     }
 
+    /// <inheritdoc />
     [SuppressMessage("Performance", "CA1822:Mark members as static", Justification = "Allow override through inheritance.")]
     public string LoadEmbeddedScript()
     {

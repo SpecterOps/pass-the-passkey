@@ -270,17 +270,27 @@
         </Expander>
 
         <Expander Header="Response (JSON)" IsExpanded="True" Margin="0,0,0,8">
-            <TextBox x:Name="ResponseTextBox"
-                        Text="{Binding PublicKeyCredentialJson, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"
-                        AcceptsReturn="True"
-                        AcceptsTab="True"
-                        MinLines="3"
-                        MinHeight="120"
-                        VerticalScrollBarVisibility="Auto"
-                        HorizontalScrollBarVisibility="Auto"
-                        TextWrapping="NoWrap"
-                        FontFamily="Consolas"
-                        TabIndex="0"/>
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,6">
+                    <Button Command="{Binding PasteResponseCommand}" ToolTip="Paste JSON from clipboard">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE77F;" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="Paste Response"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+                <TextBox x:Name="ResponseTextBox"
+                            Text="{Binding PublicKeyCredentialJson, UpdateSourceTrigger=PropertyChanged, ValidatesOnNotifyDataErrors=True, NotifyOnValidationError=True}"
+                            AcceptsReturn="True"
+                            AcceptsTab="True"
+                            MinLines="3"
+                            MinHeight="120"
+                            VerticalScrollBarVisibility="Auto"
+                            HorizontalScrollBarVisibility="Auto"
+                            TextWrapping="NoWrap"
+                            FontFamily="Consolas"
+                            TabIndex="0"/>
+            </DockPanel>
         </Expander>
         </StackPanel>
         </ScrollViewer>

@@ -3,6 +3,7 @@ using System.Windows;
 
 namespace SpecterOps.Passkeys.Injector;
 
+/// <inheritdoc />
 public sealed class PasskeyFileDialogService : IPasskeyFileDialogService
 {
     private readonly IOwnerWindowService _ownerWindowService;
@@ -12,6 +13,7 @@ public sealed class PasskeyFileDialogService : IPasskeyFileDialogService
         _ownerWindowService = ownerWindowService;
     }
 
+    /// <inheritdoc />
     public string? BrowseForPasskeyFile()
     {
         var dialog = new OpenFileDialog

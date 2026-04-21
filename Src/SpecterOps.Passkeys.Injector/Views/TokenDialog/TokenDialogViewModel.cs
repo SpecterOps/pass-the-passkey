@@ -5,6 +5,9 @@ using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 
 namespace SpecterOps.Passkeys.Injector;
 
+/// <summary>
+/// View model for the token dialog.
+/// </summary>
 public sealed partial class TokenDialogViewModel : ObservableObject, ITokenDialogViewModel
 {
     private readonly IClipboardService _clipboardService;
@@ -28,23 +31,30 @@ public sealed partial class TokenDialogViewModel : ObservableObject, ITokenDialo
     private string _title = "Token Response";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAccessTokenPresent))]
     [NotifyCanExecuteChangedFor(nameof(CopyAccessTokenCommand))]
     private string? _accessToken;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsIdTokenPresent))]
     [NotifyCanExecuteChangedFor(nameof(CopyIdTokenCommand))]
     private string? _idToken;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRefreshTokenPresent))]
     [NotifyCanExecuteChangedFor(nameof(CopyRefreshTokenCommand))]
     private string? _refreshToken;
 
+    /// <inheritdoc />
     public bool IsAccessTokenPresent => !string.IsNullOrWhiteSpace(AccessToken);
 
+    /// <inheritdoc />
     public bool IsIdTokenPresent => !string.IsNullOrWhiteSpace(IdToken);
 
+    /// <inheritdoc />
     public bool IsRefreshTokenPresent => !string.IsNullOrWhiteSpace(RefreshToken);
 
+    /// <inheritdoc />
     public string TokenResponse
     {
         get;
@@ -63,12 +73,6 @@ public sealed partial class TokenDialogViewModel : ObservableObject, ITokenDialo
             (AccessToken, IdToken, RefreshToken) = (tokenResponse.AccessToken, tokenResponse.IdToken, tokenResponse.RefreshToken);
         }
     } = string.Empty;
-
-    partial void OnAccessTokenChanged(string? value) => OnPropertyChanged(nameof(IsAccessTokenPresent));
-
-    partial void OnIdTokenChanged(string? value) => OnPropertyChanged(nameof(IsIdTokenPresent));
-
-    partial void OnRefreshTokenChanged(string? value) => OnPropertyChanged(nameof(IsRefreshTokenPresent));
 
     [RelayCommand(CanExecute = nameof(IsAccessTokenPresent))]
     private void CopyAccessToken() => _clipboardService.SetText(AccessToken);

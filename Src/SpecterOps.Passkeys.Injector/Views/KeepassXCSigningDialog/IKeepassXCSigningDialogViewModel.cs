@@ -54,5 +54,5 @@ public interface IKeepassXCSigningDialogViewModel : INotifyPropertyChanged
     IRelayCommand DecrementCounterCommand { get; }
 
     /// <summary>Gets the command that signs the assertion.</summary>
-    IRelayCommand SignCommand { get; }
+    IRelayCommand<Action?> SignCommand { get; }
 }

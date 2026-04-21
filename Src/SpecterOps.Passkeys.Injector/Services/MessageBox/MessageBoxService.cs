@@ -1,5 +1,6 @@
 namespace SpecterOps.Passkeys.Injector;
 
+/// <inheritdoc />
 public sealed class MessageBoxService : IMessageBoxService
 {
     private readonly IOwnerWindowService _ownerWindowService;
@@ -9,6 +10,7 @@ public sealed class MessageBoxService : IMessageBoxService
         _ownerWindowService = ownerWindowService;
     }
 
+    /// <inheritdoc />
     public void ShowError(string message, string title)
     {
         AppErrorDialogViewModel viewModel = new()

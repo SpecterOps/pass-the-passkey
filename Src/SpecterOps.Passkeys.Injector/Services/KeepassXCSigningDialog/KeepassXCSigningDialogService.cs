@@ -3,6 +3,7 @@ using System.Windows;
 
 namespace SpecterOps.Passkeys.Injector;
 
+/// <inheritdoc />
 public sealed class KeepassXCSigningDialogService : IKeepassXCSigningDialogService
 {
     private readonly IPasskeyFileDialogService _passkeyFileDialogService;
@@ -19,6 +20,7 @@ public sealed class KeepassXCSigningDialogService : IKeepassXCSigningDialogServi
         _ownerWindowService = ownerWindowService;
     }
 
+    /// <inheritdoc />
     public string? SignCredential(
         string challenge,
         string rpId,

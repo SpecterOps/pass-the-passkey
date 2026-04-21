@@ -68,7 +68,7 @@ public sealed partial class MicrosoftApp
 
     public static ObservableCollection<MicrosoftApp> LoadMicrosoftApps()
     {
-        const string resourceName = "SpecterOps.Passkeys.Injector.MicrosoftApps.json";
+        const string resourceName = "SpecterOps.Passkeys.Injector.MenuItems.MicrosoftApps.json";
         using Stream? stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(resourceName);
         if (stream is null)
         {

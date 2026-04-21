@@ -2,8 +2,10 @@ using System.Windows;
 
 namespace SpecterOps.Passkeys.Injector;
 
+/// <inheritdoc />
 public sealed class ClipboardService : IClipboardService
 {
+    /// <inheritdoc />
     public string? GetText()
     {
         try
@@ -16,6 +18,7 @@ public sealed class ClipboardService : IClipboardService
         }
     }
 
+    /// <inheritdoc />
     public void SetText(string? text)
     {
         if (string.IsNullOrWhiteSpace(text))
