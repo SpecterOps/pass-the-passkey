@@ -22,16 +22,35 @@ namespace SpecterOps.Passkeys.Injector
         {
             var provider = new ServiceContainer();
             IClipboardService clipboardService = new ClipboardService();
+            IOwnerWindowService ownerWindowService = new OwnerWindowService();
+            IMessageBoxService messageBoxService = new MessageBoxService(ownerWindowService);
+            IPasskeyFileDialogService passkeyFileDialogService = new PasskeyFileDialogService(ownerWindowService);
+            IKeepassXCSigningDialogService keepassXCSigningDialogService =
+                new KeepassXCSigningDialogService(passkeyFileDialogService, messageBoxService, ownerWindowService);
             IWebAuthnBridge webAuthnBridge = new WebAuthnBridge();
-            IAssertionDialogViewModel assertionViewModel = new AssertionDialogViewModel(clipboardService);
-            IAttestationDialogViewModel attestationViewModel = new AttestationDialogViewModel();
-            ITokenDialogViewModel tokenDialogViewModel = new TokenDialogViewModel(clipboardService);
-            IMainWindowViewModel mainWindowViewModel = new MainWindowViewModel(assertionViewModel, attestationViewModel, tokenDialogViewModel, webAuthnBridge);
+            IC2CommandsDialogService c2CommandsDialogService = new C2CommandsDialogService(ownerWindowService);
+            IAssertionDialogService assertionDialogService = new AssertionDialogService(
+                ownerWindowService,
+                clipboardService,
+                keepassXCSigningDialogService,
+                c2CommandsDialogService);
+            IAttestationDialogService attestationDialogService = new AttestationDialogService(ownerWindowService);
+            ITokenDialogService tokenDialogService = new TokenDialogService(ownerWindowService, clipboardService);
+            IMainWindowViewModel mainWindowViewModel = new MainWindowViewModel(
+                webAuthnBridge,
+                assertionDialogService,
+                attestationDialogService,
+                tokenDialogService);
 
             provider.AddService(typeof(IClipboardService), clipboardService);
-            provider.AddService(typeof(IAssertionDialogViewModel), assertionViewModel);
-            provider.AddService(typeof(IAttestationDialogViewModel), attestationViewModel);
-            provider.AddService(typeof(ITokenDialogViewModel), tokenDialogViewModel);
+            provider.AddService(typeof(IOwnerWindowService), ownerWindowService);
+            provider.AddService(typeof(IC2CommandsDialogService), c2CommandsDialogService);
+            provider.AddService(typeof(IAssertionDialogService), assertionDialogService);
+            provider.AddService(typeof(IAttestationDialogService), attestationDialogService);
+            provider.AddService(typeof(IMessageBoxService), messageBoxService);
+            provider.AddService(typeof(IPasskeyFileDialogService), passkeyFileDialogService);
+            provider.AddService(typeof(IKeepassXCSigningDialogService), keepassXCSigningDialogService);
+            provider.AddService(typeof(ITokenDialogService), tokenDialogService);
             provider.AddService(typeof(IMainWindowViewModel), mainWindowViewModel);
             provider.AddService(typeof(IWebAuthnBridge), webAuthnBridge);
             Ioc.Default.ConfigureServices(provider);

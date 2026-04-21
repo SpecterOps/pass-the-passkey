@@ -45,12 +45,12 @@
 
   <!-- Ensure TypeScript compiles before the embedded resource is included -->
   <ItemGroup>
-    <TypeScriptCompile Include="WebAuthnBridge.ts" />
+    <TypeScriptCompile Include="Services\WebAuthnBridge\WebAuthnBridge.ts" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- Embed the compiled JavaScript file -->
-    <EmbeddedResource Include="WebAuthnBridge.js">
+    <EmbeddedResource Include="Services\WebAuthnBridge\WebAuthnBridge.js">
       <DependentUpon>WebAuthnBridge.ts</DependentUpon>
     </EmbeddedResource>
     <!-- Embed JSON config files -->

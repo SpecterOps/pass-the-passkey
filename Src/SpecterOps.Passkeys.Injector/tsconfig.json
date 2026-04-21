@@ -23,6 +23,6 @@
     "verbatimModuleSyntax": false,
     "noEmit": true
   },
-  "include": ["WebAuthnBridge.ts"],
+  "include": ["Services/WebAuthnBridge/WebAuthnBridge.ts"],
   "exclude": ["node_modules"]
 }
