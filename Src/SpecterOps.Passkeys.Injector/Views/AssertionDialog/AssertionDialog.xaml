@@ -186,19 +186,19 @@
                         <Button Command="{Binding PasteResponseCommand}" Margin="0,0,8,0" ToolTip="Paste JSON from clipboard">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE77F;" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Paste Response"/>
+                                <TextBlock Text="Paste response"/>
                             </StackPanel>
                         </Button>
-                        <Button Command="{Binding SignWithKeepassXCCommand}" ToolTip="Sign the challenge using KeepassXC exported passkey file">
+                        <Button Command="{Binding SignWithKeepassXCCommand}" ToolTip="Sign the challenge with a KeePassXC-exported passkey file">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8D7;" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Sign using KeepassXC"/>
+                                <TextBlock Text="Sign with KeePassXC"/>
                             </StackPanel>
                         </Button>
                         <Button Command="{Binding ShowC2CommandsCommand}" Margin="8,0,0,0" ToolTip="Show CLI commands for C2 frameworks">
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE756;" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                <TextBlock Text="Show C2 Commands"/>
+                                <TextBlock Text="Show C2 commands"/>
                             </StackPanel>
                         </Button>
                     </StackPanel>

@@ -5,10 +5,10 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:SpecterOps.Passkeys.Injector"
         mc:Ignorable="d"
-        Title="Sign using KeepassXC"
+        Title="Sign with KeePassXC"
         Width="760"
-        MinWidth="650"
-        MinHeight="450"
+        MinWidth="680"
+        MinHeight="480"
         SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip"
@@ -71,7 +71,7 @@
                             <TextBox Grid.Column="1" IsReadOnly="True" Margin="0,0,6,0"
                                      Text="{Binding PasskeyFilePath, Mode=OneWay, ValidatesOnNotifyDataErrors=True}"/>
                             <Button Grid.Column="2" Command="{Binding BrowsePasskeyFileCommand}"
-                                    ToolTip="Browse for KeepassXC exported passkey file">
+                                    ToolTip="Browse for a KeePassXC-exported passkey file">
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xED25;" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                     <TextBlock Text="Browse…"/>

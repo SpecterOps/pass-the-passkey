@@ -275,7 +275,7 @@
                     <Button Command="{Binding PasteResponseCommand}" ToolTip="Paste JSON from clipboard">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE77F;" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="Paste Response"/>
+                            <TextBlock Text="Paste response"/>
                         </StackPanel>
                     </Button>
                 </StackPanel>

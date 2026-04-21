@@ -39,7 +39,7 @@
                 Command="{Binding CopyAccessTokenCommand}">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8C8;" Margin="0,0,6,0" VerticalAlignment="Center" />
-                    <TextBlock Text="Copy Access Token" />
+                    <TextBlock Text="Copy access token" />
                 </StackPanel>
             </Button>
             <Button x:Name="CopyRefreshTokenButton"
@@ -49,7 +49,7 @@
                 Command="{Binding CopyRefreshTokenCommand}">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8C8;" Margin="0,0,6,0" VerticalAlignment="Center" />
-                    <TextBlock Text="Copy Refresh Token" />
+                    <TextBlock Text="Copy refresh token" />
                 </StackPanel>
             </Button>
             <Button x:Name="CopyIdTokenButton"
@@ -59,7 +59,7 @@
                 Command="{Binding CopyIdTokenCommand}">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8C8;" Margin="0,0,6,0" VerticalAlignment="Center" />
-                    <TextBlock Text="Copy ID Token" />
+                    <TextBlock Text="Copy ID token" />
                 </StackPanel>
             </Button>
         </StackPanel>

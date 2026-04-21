@@ -8,7 +8,7 @@
         Title="C2 Commands"
         Width="760"
         MinWidth="650"
-        MinHeight="300"
+        MinHeight="400"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip"
         d:DataContext="{d:DesignInstance Type=local:C2CommandsDialogViewModel, IsDesignTimeCreatable=False}">
