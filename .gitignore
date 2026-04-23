@@ -31,11 +31,13 @@ artifacts/
 
 # NuGet Packages
 *.nupkg
+
 # NuGet Symbol Packages
 *.snupkg
 
 # Visual Studio user-specific files
 *.csproj.user
+*.vcxproj.user
 *.sln.docstates
 .vs/
 
@@ -51,10 +53,8 @@ CodeCoverage/
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
 
-# NUnit
-*.VisualState.xml
-TestResult.xml
-nunit-*.xml
-
 # Claude Code
 /.claude/settings.local.json
+
+# OpenAI Codex
+.dotnet/

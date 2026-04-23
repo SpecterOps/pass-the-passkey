@@ -28,7 +28,8 @@ public class Program
         {
             PromptCommand.Create(logger),
             WaitCommand.Create(logger),
-            ListCommand.Create(logger)
+            ListCommand.Create(logger),
+            HookCommand.Create(logger)
         };
 
         var config = new CommandLineConfiguration(rootCommand);

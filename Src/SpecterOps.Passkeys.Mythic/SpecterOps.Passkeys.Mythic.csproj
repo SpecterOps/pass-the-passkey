@@ -4,6 +4,7 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net48</TargetFramework>
     <AssemblyName>SharpPasskeys</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
     <!-- Disable the generation of the config file -->
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
@@ -31,9 +32,21 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="DSInternals.Win32.WebAuthn" Version="2.1.0" />
+    <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.275">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="System.Formats.Cbor" Version="10.0.2" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.1" />
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta5.25277.114" />
   </ItemGroup>
+
+  <!-- Pull the native WebAuthn hook DLLs (one per architecture) next to the CLI so it can load the matching one at runtime. Silently no-ops if the hook has not been built yet. -->
+  <Target Name="CopyWebAuthnHookDlls" AfterTargets="Build">
+    <ItemGroup>
+      <WebAuthnHookDlls Include="$(ArtifactsPath)\bin\SpecterOps.Passkeys.WebAuthnHook\$(Configuration)\WebAuthnHook_*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(WebAuthnHookDlls)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

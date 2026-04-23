@@ -1,0 +1,3 @@
+[submodule "Src/SpecterOps.Passkeys.WebAuthnHook/Detours"]
+	path = Src/SpecterOps.Passkeys.WebAuthnHook/Detours
+	url = https://github.com/microsoft/Detours.git

@@ -8,6 +8,7 @@
     <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
 
     <!-- Code Analysis -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
