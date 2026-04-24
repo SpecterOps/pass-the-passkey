@@ -220,7 +220,12 @@ namespace SpecterOps::Passkeys::WebAuthnHook
             return result;
         }
 
-        if (!TryGetFreeAssertionFunction() || !TryForwardAssertionToPipe(clientData, *assertion))
+        if (!TryGetFreeAssertionFunction())
+        {
+            return result;
+        }
+
+        if (!TryForwardAssertionToPipe(clientData, *assertion))
         {
             return result;
         }
@@ -231,7 +236,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         AppendLog(
             L"[" + Timestamp() + L"] [pid=" + std::to_wstring(::GetCurrentProcessId())
             + L" tid=" + std::to_wstring(::GetCurrentThreadId())
-            + L"] Forwarded WebAuthn assertion response to \\\\.\\pipe\\WebAuthnHook.");
+            + L"] Forwarded WebAuthn assertion response to " + std::wstring(WebAuthnHookPipeName) + L".");
         return ForwardedAssertionResult;
     }
 
