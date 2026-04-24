@@ -2,7 +2,10 @@ using System.CommandLine;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32.SafeHandles;
@@ -25,6 +28,12 @@ internal static class HookCommand
 
     /// <summary>Common file-name prefix of the architecture-specific hook DLLs (e.g., <c>WebAuthnHook_x64.dll</c>).</summary>
     private const string HookModulePrefix = "WebAuthnHook_";
+
+    /// <summary>Name of the local named pipe that the hook DLL writes assertion responses to.</summary>
+    private const string HookPipeName = "WebAuthnHook";
+
+    /// <summary>Default timeout for <c>hook wait</c>.</summary>
+    private static readonly TimeSpan DefaultHookWaitTimeout = TimeSpan.FromMinutes(10);
 
     /// <summary>Maximum number of remote <c>FreeLibrary</c> calls issued to decrement the hook's load count.</summary>
     private const int MaxUnloadAttempts = 8;
@@ -97,12 +106,179 @@ internal static class HookCommand
         var listCommand = new Command("list", "List running browser processes and the state of the native WebAuthn hook.");
         listCommand.SetAction(_ => ListBrowsers(logger));
 
+        var waitTimeoutOption = new Option<int?>("--timeout", "-t")
+        {
+            Description = $"Timeout in seconds (default: {DefaultHookWaitTimeout.TotalSeconds:0})"
+        };
+        var waitCountOption = new Option<int?>("--count", "-n")
+        {
+            Description = "Maximum number of assertions to capture (default: unlimited)"
+        };
+        var waitCommand = new Command("wait", "Create the WebAuthnHook named pipe and listen for assertion responses from the hook DLL.")
+        {
+            waitTimeoutOption,
+            waitCountOption
+        };
+        waitCommand.SetAction(parseResult =>
+        {
+            int? timeoutSeconds = parseResult.GetValue(waitTimeoutOption);
+            TimeSpan timeout = timeoutSeconds.HasValue
+                ? TimeSpan.FromSeconds(timeoutSeconds.Value)
+                : DefaultHookWaitTimeout;
+            int maxCount = parseResult.GetValue(waitCountOption) ?? 0;
+            return WaitForHookResponses(logger, timeout, maxCount);
+        });
+
         return new Command("hook", "Manage the native WebAuthn hook DLL in browser processes.")
         {
             attachCommand,
             detachCommand,
-            listCommand
+            listCommand,
+            waitCommand
         };
+    }
+
+    /// <summary>
+    /// Creates the <c>WebAuthnHook</c> named pipe and blocks until the hook DLL sends an assertion response
+    /// (or the timeout/count limit is reached), printing each JSON response to stdout.
+    /// </summary>
+    /// <returns>0 if at least one assertion was captured; 1 on timeout with no captures.</returns>
+    private static int WaitForHookResponses(ILogger logger, TimeSpan timeout, int maxCount)
+    {
+        PipeSecurity security = CreateAuthenticatedUsersPipeSecurity();
+
+        NamedPipeServerStream pipe;
+        try
+        {
+            pipe = new NamedPipeServerStream(
+                HookPipeName,
+                PipeDirection.In,
+                maxNumberOfServerInstances: 1,
+                PipeTransmissionMode.Byte,
+                PipeOptions.None,
+                inBufferSize: 0,
+                outBufferSize: 0,
+                security);
+        }
+        catch (IOException ex)
+        {
+            logger.LogError("Failed to create named pipe \\\\.\\pipe\\{Name}: {Message}", HookPipeName, ex.Message);
+            return 1;
+        }
+
+        using (pipe)
+        {
+            logger.LogInformation(
+                "Listening on \\\\.\\pipe\\{Name} for hook assertion responses (timeout: {Timeout:0}s, max: {Max})...",
+                HookPipeName,
+                timeout.TotalSeconds,
+                maxCount <= 0 ? "unlimited" : maxCount.ToString(CultureInfo.InvariantCulture));
+
+            var deadline = DateTime.UtcNow + timeout;
+            int received = 0;
+
+            while (maxCount <= 0 || received < maxCount)
+            {
+                TimeSpan remaining = deadline - DateTime.UtcNow;
+                if (remaining <= TimeSpan.Zero)
+                {
+                    break;
+                }
+
+                using var cts = new CancellationTokenSource(remaining);
+                try
+                {
+                    pipe.WaitForConnectionAsync(cts.Token).GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (IOException ex)
+                {
+                    logger.LogError("Pipe error while waiting for connection: {Message}", ex.Message);
+                    break;
+                }
+
+                try
+                {
+                    string? json = ReadPipeAssertionResponse(pipe, logger);
+                    if (json is not null)
+                    {
+                        received++;
+                        Console.WriteLine(json);
+                    }
+                }
+                finally
+                {
+                    pipe.Disconnect();
+                }
+            }
+
+            if (received == 0)
+            {
+                logger.LogWarning("Timeout expired. No assertion responses were received from the hook.");
+                return 1;
+            }
+
+            logger.LogInformation("Captured {Count} assertion response(s).", received);
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Reads one assertion response from <paramref name="pipe"/> by consuming lines between the
+    /// <c>start</c> and <c>end</c> sentinel lines written by the hook DLL.
+    /// </summary>
+    /// <returns>The JSON payload, or <c>null</c> if the connection was closed before a complete message arrived.</returns>
+    private static string? ReadPipeAssertionResponse(NamedPipeServerStream pipe, ILogger logger)
+    {
+        using var reader = new StreamReader(pipe, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 4096, leaveOpen: true);
+        var bodyLines = new List<string>();
+        bool started = false;
+        string? line;
+
+        while ((line = reader.ReadLine()) != null)
+        {
+            if (!started)
+            {
+                if (line == "start")
+                {
+                    started = true;
+                }
+
+                continue;
+            }
+
+            if (line == "end")
+            {
+                return string.Join(Environment.NewLine, bodyLines);
+            }
+
+            bodyLines.Add(line);
+        }
+
+        if (started)
+        {
+            logger.LogWarning("Pipe connection closed before the 'end' marker was received.");
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Builds a <see cref="PipeSecurity"/> descriptor that grants the built-in
+    /// <em>Authenticated Users</em> group write access so that the hook DLL,
+    /// running under any interactively logged-in account, can connect and deliver responses.
+    /// </summary>
+    private static PipeSecurity CreateAuthenticatedUsersPipeSecurity()
+    {
+        var security = new PipeSecurity();
+        security.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
+            PipeAccessRights.ReadWrite,
+            AccessControlType.Allow));
+        return security;
     }
 
     /// <summary>
