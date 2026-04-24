@@ -32,6 +32,12 @@ internal static class HookCommand
     /// <summary>Name of the local named pipe that the hook DLL writes assertion responses to.</summary>
     private const string HookPipeName = "WebAuthnHook";
 
+    /// <summary>Sentinel line written by the hook DLL before the JSON payload.</summary>
+    private const string PipeSentinelStart = "start";
+
+    /// <summary>Sentinel line written by the hook DLL after the JSON payload.</summary>
+    private const string PipeSentinelEnd = "end";
+
     /// <summary>Default timeout for <c>hook wait</c>.</summary>
     private static readonly TimeSpan DefaultHookWaitTimeout = TimeSpan.FromMinutes(10);
 
@@ -242,7 +248,7 @@ internal static class HookCommand
         {
             if (!started)
             {
-                if (line == "start")
+                if (line == PipeSentinelStart)
                 {
                     started = true;
                 }
@@ -250,9 +256,17 @@ internal static class HookCommand
                 continue;
             }
 
-            if (line == "end")
+            if (line == PipeSentinelEnd)
             {
                 return string.Join(Environment.NewLine, bodyLines);
+            }
+
+            if (line == PipeSentinelStart)
+            {
+                // Malformed stream: a new 'start' arrived before the previous message ended.
+                logger.LogWarning("Unexpected 'start' sentinel received mid-message; discarding partial payload and starting over.");
+                bodyLines.Clear();
+                continue;
             }
 
             bodyLines.Add(line);
