@@ -41,6 +41,8 @@ namespace SpecterOps::Passkeys::WebAuthnHook
 
     namespace
     {
+        constexpr size_t SerializedAssertionJsonOverhead = 160;
+
         std::string Base64UrlEncode(const BYTE* buffer, DWORD length)
         {
             if (buffer == nullptr || length == 0)
@@ -109,7 +111,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
                 + authenticatorData.size()
                 + signature.size()
                 + userHandle.size()
-                + 160);
+                + SerializedAssertionJsonOverhead);
 
             json += R"({"id":")";
             json += credentialId;
@@ -274,7 +276,10 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         }
 
         TrueWebAuthNAuthenticatorGetAssertion = target;
-        TrueWebAuthNFreeAssertion = freeAssertion;
+        if (freeAssertion != nullptr)
+        {
+            TrueWebAuthNFreeAssertion = freeAssertion;
+        }
 
         if (DetourTransactionBegin() != NO_ERROR)
         {
