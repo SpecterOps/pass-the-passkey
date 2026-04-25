@@ -77,10 +77,9 @@ namespace SpecterOps::Passkeys::WebAuthnHook
             else
             {
                 WritePipeMessage(pipe, BuildAssertionErrorMessage(rpId, processName, userName, pid, result));
+                ::FlushFileBuffers(pipe);
+                ::CloseHandle(pipe);
             }
-
-            ::FlushFileBuffers(pipe);
-            ::CloseHandle(pipe);
         }
 
         return result;

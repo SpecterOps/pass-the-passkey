@@ -203,8 +203,7 @@ internal static class HookCommand
                             break;
                         }
 
-                        using var readCts = new CancellationTokenSource(remaining);
-                        if (ProcessPipeMessage(pipe, logger, readCts.Token))
+                        if (ProcessPipeMessage(pipe, logger, cts.Token))
                         {
                             receivedCount++;
                         }
@@ -234,7 +233,7 @@ internal static class HookCommand
                 return 1;
             }
 
-            logger.LogInformation("Captured assertion response.");
+            logger.LogInformation("Stopped listening after receiving at least one completed assertion response.");
             return 0;
         }
         catch (IOException ex)
