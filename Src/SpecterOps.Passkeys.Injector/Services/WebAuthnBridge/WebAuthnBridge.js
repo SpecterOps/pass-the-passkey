@@ -29,7 +29,7 @@
         }
         try {
             const serializedOptions = serializePublicKeyCredentialCreationOptions(options.publicKey);
-            const publicKeyCredentialJson = await bridge.CreateCredentialAsync(JSON.stringify(serializedOptions));
+            const publicKeyCredentialJson = await bridge.CreateCredentialAsync(JSON.stringify(serializedOptions), options.mediation ?? null);
             if (publicKeyCredentialJson) {
                 const parsedCredential = JSON.parse(publicKeyCredentialJson);
                 return deserializeAttestationResponse(parsedCredential);

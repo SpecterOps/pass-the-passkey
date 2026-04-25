@@ -47,13 +47,14 @@ public class WebAuthnBridge : IWebAuthnBridge
     /// Handles the navigator.credentials.create() call from JavaScript.
     /// </summary>
     /// <param name="optionsJson">The PublicKeyCredentialCreationOptions from JavaScript as a JSON string.</param>
+    /// <param name="mediation">The mediation value from JavaScript.</param>
     /// <returns>A PublicKeyCredential response as a JSON string, or null if the operation fails.</returns>
-    public async Task<string?> CreateCredentialAsync(string optionsJson)
+    public async Task<string?> CreateCredentialAsync(string optionsJson, string? mediation = null)
     {
         try
         {
             Debug.WriteLine($"WebAuthnBridge.CreateCredentialAsync options JSON: {optionsJson}");
-            var eventArgs = new CredentialCreationEventArgs(optionsJson);
+            var eventArgs = new CredentialCreationEventArgs(optionsJson, mediation);
             CredentialCreationRequested?.Invoke(this, eventArgs);
             return eventArgs.PublicKeyCredential;
         }
@@ -65,4 +66,3 @@ public class WebAuthnBridge : IWebAuthnBridge
         }
     }
 }
-

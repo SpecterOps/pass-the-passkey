@@ -12,7 +12,7 @@
 /** WebView2 bridge interface exposed by .NET */
 interface WebAuthnBridge {
     GetCredentialAsync(optionsJson: string, mediation: string | null): Promise<string | null>;
-    CreateCredentialAsync(optionsJson: string): Promise<string | null>;
+    CreateCredentialAsync(optionsJson: string, mediation: string | null): Promise<string | null>;
 }
 
 /** Chrome WebView2 host objects interface */
@@ -24,14 +24,19 @@ interface ChromeWebView {
 
 declare const chrome: { webview: ChromeWebView };
 
-// Augment PublicKeyCredentialRequestOptions to include hints (WebAuthn Level 3)
-interface PublicKeyCredentialRequestOptionsWithHints extends PublicKeyCredentialRequestOptions {
+// Augment DOM types that are not yet present in the bundled TypeScript lib.dom.
+// Verified against TypeScript 5.9.3 in this environment.
+interface PublicKeyCredentialRequestOptions {
     hints?: string[];
 }
 
-interface PublicKeyCredentialCreationOptionsWithHints extends PublicKeyCredentialCreationOptions {
+interface PublicKeyCredentialCreationOptions {
     hints?: string[];
     attestationFormats?: string[];
+}
+
+interface CredentialCreationOptions {
+    mediation?: CredentialMediationRequirement;
 }
 
 /** Serialized assertion response from C# */
@@ -133,7 +138,8 @@ interface SerializedPublicKeyCredentialAttestation {
             const serializedOptions = serializePublicKeyCredentialCreationOptions(options.publicKey);
 
             const publicKeyCredentialJson = await bridge.CreateCredentialAsync(
-                JSON.stringify(serializedOptions)
+                JSON.stringify(serializedOptions),
+                options.mediation ?? null
             );
 
             if (publicKeyCredentialJson) {
@@ -295,7 +301,7 @@ interface SerializedPublicKeyCredentialAttestation {
             serialized.userVerification = publicKey.userVerification;
         }
 
-        const hints = (publicKey as PublicKeyCredentialRequestOptionsWithHints).hints;
+        const hints = publicKey.hints;
         if (hints !== undefined) {
             serialized.hints = hints;
         }
@@ -336,86 +342,85 @@ interface SerializedPublicKeyCredentialAttestation {
             return null;
         }
 
-        const extendedPublicKey = publicKey as PublicKeyCredentialCreationOptionsWithHints;
         const serialized: Partial<PublicKeyCredentialCreationOptionsJSON> & {
             hints?: string[];
             attestationFormats?: string[];
         } = {
-            challenge: arrayBufferToBase64Url(extendedPublicKey.challenge) ?? '',
+            challenge: arrayBufferToBase64Url(publicKey.challenge) ?? '',
         };
 
-        if (extendedPublicKey.rp) {
+        if (publicKey.rp) {
             const rp: PublicKeyCredentialRpEntity = {
-                name: extendedPublicKey.rp.name,
+                name: publicKey.rp.name,
             };
 
-            if (extendedPublicKey.rp.id !== undefined) {
-                rp.id = extendedPublicKey.rp.id;
+            if (publicKey.rp.id !== undefined) {
+                rp.id = publicKey.rp.id;
             }
 
             serialized.rp = rp;
         }
 
-        if (extendedPublicKey.user) {
+        if (publicKey.user) {
             serialized.user = {
-                id: arrayBufferToBase64Url(extendedPublicKey.user.id) ?? '',
-                name: extendedPublicKey.user.name,
-                displayName: extendedPublicKey.user.displayName,
+                id: arrayBufferToBase64Url(publicKey.user.id) ?? '',
+                name: publicKey.user.name,
+                displayName: publicKey.user.displayName,
             };
         }
 
-        if (extendedPublicKey.pubKeyCredParams) {
-            serialized.pubKeyCredParams = extendedPublicKey.pubKeyCredParams.map(param => ({
+        if (publicKey.pubKeyCredParams) {
+            serialized.pubKeyCredParams = publicKey.pubKeyCredParams.map(param => ({
                 type: param.type,
                 alg: param.alg,
             }));
         }
 
-        if (extendedPublicKey.timeout !== undefined) {
-            serialized.timeout = extendedPublicKey.timeout;
+        if (publicKey.timeout !== undefined) {
+            serialized.timeout = publicKey.timeout;
         }
 
-        if (extendedPublicKey.attestation !== undefined) {
-            serialized.attestation = extendedPublicKey.attestation;
+        if (publicKey.attestation !== undefined) {
+            serialized.attestation = publicKey.attestation;
         }
 
-        if (extendedPublicKey.attestationFormats !== undefined) {
-            serialized.attestationFormats = extendedPublicKey.attestationFormats;
+        if (publicKey.attestationFormats !== undefined) {
+            serialized.attestationFormats = publicKey.attestationFormats;
         }
 
-        if (extendedPublicKey.hints !== undefined) {
-            serialized.hints = extendedPublicKey.hints;
+        if (publicKey.hints !== undefined) {
+            serialized.hints = publicKey.hints;
         }
 
-        if (extendedPublicKey.authenticatorSelection) {
+        if (publicKey.authenticatorSelection) {
             const authenticatorSelection: AuthenticatorSelectionCriteria = {};
 
-            if (extendedPublicKey.authenticatorSelection.authenticatorAttachment !== undefined) {
-                authenticatorSelection.authenticatorAttachment = extendedPublicKey.authenticatorSelection.authenticatorAttachment;
+            if (publicKey.authenticatorSelection.authenticatorAttachment !== undefined) {
+                authenticatorSelection.authenticatorAttachment = publicKey.authenticatorSelection.authenticatorAttachment;
             }
 
-            if (extendedPublicKey.authenticatorSelection.residentKey !== undefined) {
-                authenticatorSelection.residentKey = extendedPublicKey.authenticatorSelection.residentKey;
+            if (publicKey.authenticatorSelection.residentKey !== undefined) {
+                authenticatorSelection.residentKey = publicKey.authenticatorSelection.residentKey;
             }
 
-            if (extendedPublicKey.authenticatorSelection.requireResidentKey !== undefined) {
-                authenticatorSelection.requireResidentKey = extendedPublicKey.authenticatorSelection.requireResidentKey;
+            if (publicKey.authenticatorSelection.requireResidentKey !== undefined) {
+                authenticatorSelection.requireResidentKey = publicKey.authenticatorSelection.requireResidentKey;
             }
 
-            if (extendedPublicKey.authenticatorSelection.userVerification !== undefined) {
-                authenticatorSelection.userVerification = extendedPublicKey.authenticatorSelection.userVerification;
+            if (publicKey.authenticatorSelection.userVerification !== undefined) {
+                authenticatorSelection.userVerification = publicKey.authenticatorSelection.userVerification;
             }
 
             serialized.authenticatorSelection = authenticatorSelection;
         }
 
-        const creationExtensions = serializeExtensions(extendedPublicKey.extensions);
+        const creationExtensions = serializeExtensions(publicKey.extensions);
         if (creationExtensions) {
             serialized.extensions = creationExtensions;
         }
 
-        if (extendedPublicKey.excludeCredentials) {
-            serialized.excludeCredentials = extendedPublicKey.excludeCredentials.map(cred => {
+        if (publicKey.excludeCredentials) {
+            serialized.excludeCredentials = publicKey.excludeCredentials.map(cred => {
                 const descriptor: PublicKeyCredentialDescriptorJSON = {
                     type: cred.type,
                     id: arrayBufferToBase64Url(cred.id) ?? '',

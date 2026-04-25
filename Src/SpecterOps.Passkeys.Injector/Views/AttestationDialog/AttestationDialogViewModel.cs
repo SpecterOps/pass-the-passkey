@@ -122,6 +122,12 @@ public partial class AttestationDialogViewModel : ObservableValidator, IAttestat
     private string[]? _attestationFormats;
 
     /// <summary>
+    /// Gets or sets the credential mediation requirement.
+    /// </summary>
+    [ObservableProperty]
+    private string _mediation = string.Empty;
+
+    /// <summary>
     /// Gets or sets the JSON response text.
     /// </summary>
     [ObservableProperty]
@@ -391,6 +397,7 @@ public partial class AttestationDialogViewModel : ObservableValidator, IAttestat
         Extensions = string.Empty;
         Hints = null;
         AttestationFormats = null;
+        Mediation = string.Empty;
         AttestationStartTime = null;
         RequestExpiration = null;
         ChallengeExpiration = null;

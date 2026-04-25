@@ -189,7 +189,9 @@
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Challenge:" Style="{StaticResource FormLabelFirstColumnStyle}"/>
-                            <local:ClipboardEnabledTextBox Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding Challenge, Mode=OneWay}" Focusable="False"/>
+                            <local:ClipboardEnabledTextBox Grid.Row="0" Grid.Column="1" Text="{Binding Challenge, Mode=OneWay}" Focusable="False"/>
+                            <TextBlock Grid.Row="0" Grid.Column="2" Text="Mediation:" Style="{StaticResource FormLabelStyle}"/>
+                            <TextBox Grid.Row="0" Grid.Column="3" Text="{Binding Mediation, Mode=OneWay}" IsReadOnly="True"/>
 
                             <TextBlock Grid.Row="1" Grid.Column="0" Text="Extensions:" Style="{StaticResource FormLabelFirstColumnStyle}"/>
                             <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding Extensions, Mode=OneWay}" IsReadOnly="True"/>

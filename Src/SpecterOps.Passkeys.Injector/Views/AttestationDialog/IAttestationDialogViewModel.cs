@@ -63,6 +63,9 @@ public interface IAttestationDialogViewModel : INotifyPropertyChanged
     /// <summary>Gets or sets preferred attestation formats.</summary>
     string[]? AttestationFormats { get; set; }
 
+    /// <summary>Gets or sets the credential mediation requirement.</summary>
+    string Mediation { get; set; }
+
     /// <summary>Gets or sets the serialized credential response.</summary>
     string? PublicKeyCredentialJson { get; set; }
 

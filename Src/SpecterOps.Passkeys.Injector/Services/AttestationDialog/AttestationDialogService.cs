@@ -19,13 +19,14 @@ public sealed class AttestationDialogService : IAttestationDialogService
     }
 
     /// <inheritdoc/>
-    public string? Show(string optionsJson)
+    public string? Show(string optionsJson, string? mediation = null)
     {
         ArgumentNullException.ThrowIfNull(optionsJson);
 
         AttestationDialogViewModel viewModel = new()
         {
-            AttestationOptionsJson = optionsJson
+            AttestationOptionsJson = optionsJson,
+            Mediation = mediation ?? string.Empty
         };
 
         AttestationDialog dialog = new(viewModel);

@@ -27,6 +27,7 @@ public interface IWebAuthnBridge
     /// Handles a JavaScript request for <c>navigator.credentials.create()</c>.
     /// </summary>
     /// <param name="optionsJson">The serialized WebAuthn creation options.</param>
+    /// <param name="mediation">The optional mediation preference.</param>
     /// <returns>The serialized credential response, or <see langword="null"/> if no response is available.</returns>
-    Task<string?> CreateCredentialAsync(string optionsJson);
+    Task<string?> CreateCredentialAsync(string optionsJson, string? mediation = null);
 }
