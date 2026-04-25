@@ -118,10 +118,9 @@ internal static class HookCommand
         waitCommand.SetAction(parseResult =>
         {
             int? timeoutSeconds = parseResult.GetValue(waitTimeoutOption);
-            TimeSpan timeout = timeoutSeconds.HasValue
-                ? TimeSpan.FromSeconds(timeoutSeconds.Value)
-                : DefaultHookWaitTimeout;
-            return WaitForHookResponses(logger, timeout);
+            return timeoutSeconds.HasValue
+                ? WaitForHookResponses(logger, TimeSpan.FromSeconds(timeoutSeconds.Value))
+                : WaitForHookResponses(logger);
         });
 
         return new Command("hook", "Manage the native WebAuthn hook DLL in browser processes.")
@@ -139,13 +138,17 @@ internal static class HookCommand
     /// Started and error messages are logged but do not stop the listener.
     /// </summary>
     /// <returns>0 if an assertion was captured; 1 on timeout with no captures.</returns>
-    private static int WaitForHookResponses(ILogger logger, TimeSpan timeout = default)
-    {
-        if (timeout == default)
-        {
-            timeout = DefaultHookWaitTimeout;
-        }
+    private static int WaitForHookResponses(ILogger logger)
+        => WaitForHookResponses(logger, DefaultHookWaitTimeout);
 
+    /// <summary>
+    /// Creates the <c>WebAuthnHook</c> named pipe and blocks until the hook DLL sends one successful
+    /// assertion response (or the timeout expires), printing the JSON to stdout.
+    /// Started and error messages are logged but do not stop the listener.
+    /// </summary>
+    /// <returns>0 if an assertion was captured; 1 on timeout with no captures.</returns>
+    private static int WaitForHookResponses(ILogger logger, TimeSpan timeout)
+    {
         PipeSecurity security = CreateAuthenticatedUsersPipeSecurity();
 
         NamedPipeServerStream pipe;
