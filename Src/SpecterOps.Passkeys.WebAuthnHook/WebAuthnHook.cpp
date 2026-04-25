@@ -51,14 +51,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
 
         // Open the pipe before calling the real API so the "started" message arrives
         // before the user is prompted.  A missing listener is silently ignored.
-        const HANDLE pipe = ::CreateFileW(
-            WebAuthnHookPipeName,
-            GENERIC_WRITE,
-            0,
-            nullptr,
-            OPEN_EXISTING,
-            FILE_ATTRIBUTE_NORMAL,
-            nullptr);
+        const HANDLE pipe = OpenHookPipe();
         const bool pipeOpen = pipe != INVALID_HANDLE_VALUE;
 
         if (pipeOpen)
@@ -73,10 +66,13 @@ namespace SpecterOps::Passkeys::WebAuthnHook
             if (SUCCEEDED(result) && assertion != nullptr && *assertion != nullptr)
             {
                 const std::string msg = BuildAssertionCompletedMessage(processName, userName, pid, clientData, *assertion);
-                if (!msg.empty())
-                {
-                    WritePipeMessage(pipe, msg);
-                }
+                WritePipeMessage(pipe, msg);
+
+                ::FlushFileBuffers(pipe);
+                ::CloseHandle(pipe);
+                ::WebAuthNFreeAssertion(*assertion);
+                *assertion = nullptr;
+                return HRESULT_FROM_WIN32(ERROR_TIMEOUT);
             }
             else
             {

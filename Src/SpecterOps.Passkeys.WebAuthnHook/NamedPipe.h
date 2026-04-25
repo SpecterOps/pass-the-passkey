@@ -10,6 +10,9 @@ namespace SpecterOps::Passkeys::WebAuthnHook
 {
     constexpr const wchar_t* WebAuthnHookPipeName = LR"(\\.\pipe\WebAuthnHook)";
 
+    /// Opens the hook named pipe for writing and returns INVALID_HANDLE_VALUE when unavailable.
+    HANDLE OpenHookPipe();
+
     /// Writes a message atomically to a PIPE_TYPE_MESSAGE pipe handle.
     /// Each WriteFile call creates one discrete message that the server reads as a unit.
     bool WritePipeMessage(HANDLE pipe, std::string_view message);
@@ -24,8 +27,6 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         DWORD pid);
 
     /// Builds the "AssertionCompleted" JSON pipe message containing the serialized assertion.
-    /// Returns an empty string when <paramref name="clientData"/> or <paramref name="assertion"/>
-    /// lack required fields.
     std::string BuildAssertionCompletedMessage(
         std::wstring_view processName,
         std::wstring_view userName,

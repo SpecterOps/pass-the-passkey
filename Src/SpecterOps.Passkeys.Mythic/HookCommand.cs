@@ -151,10 +151,9 @@ internal static class HookCommand
     {
         PipeSecurity security = CreateAuthenticatedUsersPipeSecurity();
 
-        NamedPipeServerStream pipe;
         try
         {
-            pipe = new NamedPipeServerStream(
+            using NamedPipeServerStream pipe = new(
                 HookPipeName,
                 PipeDirection.In,
                 maxNumberOfServerInstances: 1,
@@ -163,24 +162,15 @@ internal static class HookCommand
                 inBufferSize: 0,
                 outBufferSize: 0,
                 security);
-        }
-        catch (IOException ex)
-        {
-            logger.LogError("Failed to create named pipe \\\\.\\pipe\\{Name}: {Message}", HookPipeName, ex.Message);
-            return 1;
-        }
-
-        using (pipe)
-        {
             logger.LogInformation(
                 "Listening on \\\\.\\pipe\\{Name} for hook assertion responses (timeout: {Timeout:0}s)...",
                 HookPipeName,
                 timeout.TotalSeconds);
 
             var deadline = DateTime.UtcNow + timeout;
-            int received = 0;
+            int receivedCount = 0;
 
-            while (received == 0)
+            while (receivedCount == 0)
             {
                 TimeSpan remaining = deadline - DateTime.UtcNow;
                 if (remaining <= TimeSpan.Zero)
@@ -205,20 +195,40 @@ internal static class HookCommand
 
                 try
                 {
-                    string? json = ProcessPipeMessages(pipe, logger);
-                    if (json is not null)
+                    while (receivedCount == 0)
                     {
-                        received++;
-                        Console.WriteLine(json);
+                        remaining = deadline - DateTime.UtcNow;
+                        if (remaining <= TimeSpan.Zero)
+                        {
+                            break;
+                        }
+
+                        using var readCts = new CancellationTokenSource(remaining);
+                        if (ProcessPipeMessage(pipe, logger, readCts.Token))
+                        {
+                            receivedCount++;
+                        }
+
+                        if (!pipe.IsConnected)
+                        {
+                            break;
+                        }
                     }
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
                 }
                 finally
                 {
-                    pipe.Disconnect();
+                    if (pipe.IsConnected)
+                    {
+                        pipe.Disconnect();
+                    }
                 }
             }
 
-            if (received == 0)
+            if (receivedCount == 0)
             {
                 logger.LogWarning("Timeout expired. No assertion responses were received from the hook.");
                 return 1;
@@ -227,83 +237,67 @@ internal static class HookCommand
             logger.LogInformation("Captured assertion response.");
             return 0;
         }
+        catch (IOException ex)
+        {
+            logger.LogError("Failed to create named pipe \\\\.\\pipe\\{Name}: {Message}", HookPipeName, ex.Message);
+            return 1;
+        }
     }
 
     /// <summary>
-    /// Reads and dispatches the two pipe messages that the hook DLL sends per assertion:
-    /// an <see cref="AssertionStartedMessage"/> notification followed by either
-    /// an <see cref="AssertionCompletedMessage"/> carrying the JSON assertion payload
-    /// or an <see cref="AssertionErrorMessage"/> carrying the HRESULT.
-    /// Unknown future message types are logged and skipped.
+    /// Reads and dispatches one hook message and writes the raw JSON line to stdout.
+    /// Returns <c>true</c> only when the message is an <see cref="AssertionCompletedMessage"/>.
     /// </summary>
-    /// <returns>
-    /// The raw JSON assertion object from the <c>AssertionCompleted</c> message,
-    /// or <c>null</c> if the session ended without a usable payload.
-    /// </returns>
-    private static string? ProcessPipeMessages(NamedPipeServerStream pipe, ILogger logger)
+    private static bool ProcessPipeMessage(NamedPipeServerStream pipe, ILogger logger, CancellationToken cancellationToken)
     {
-        string? startedJson = ReadPipeMessage(pipe);
-        if (startedJson is null)
+        string? messageJson = ReadPipeMessage(pipe, cancellationToken);
+        if (messageJson is null)
         {
             logger.LogWarning("Pipe connection closed without receiving any message.");
-            return null;
+            return false;
         }
 
-        HookPipeMessage? started;
+        Console.WriteLine(messageJson);
+
+        HookPipeMessage? message;
         try
         {
-            started = JsonSerializer.Deserialize(startedJson, HookPipeMessageJsonContext.Default.HookPipeMessage);
+            message = JsonSerializer.Deserialize(messageJson, HookPipeMessageJsonContext.Default.HookPipeMessage);
         }
         catch (JsonException ex)
         {
-            logger.LogWarning("Failed to parse 'AssertionStarted' pipe message: {Error}", ex.Message);
-            return null;
+            logger.LogWarning("Failed to parse hook pipe message: {Error}", ex.Message);
+            return false;
         }
 
-        if (started is not AssertionStartedMessage startedMsg)
+        switch (message)
         {
-            logger.LogWarning("Expected 'AssertionStarted' pipe message; received: {Type}.", started?.GetType().Name);
-            return null;
-        }
+            case AssertionStartedMessage startedMsg:
+                logger.LogInformation(
+                    "Assertion ceremony started: rpId={RpId} process={Process} (pid {Pid}) user={User} at {Timestamp}.",
+                    startedMsg.RpId ?? "(null)",
+                    startedMsg.ProcessName ?? "(null)",
+                    startedMsg.Pid,
+                    startedMsg.UserName ?? "(null)",
+                    startedMsg.Timestamp);
+                return false;
 
-        logger.LogInformation(
-            "Assertion ceremony started: rpId={RpId} process={Process} (pid {Pid}) user={User} at {Timestamp}.",
-            startedMsg.RpId ?? "(null)",
-            startedMsg.ProcessName ?? "(null)",
-            startedMsg.Pid,
-            startedMsg.UserName ?? "(null)",
-            startedMsg.Timestamp);
-
-        string? resultJson = ReadPipeMessage(pipe);
-        if (resultJson is null)
-        {
-            logger.LogWarning("Pipe connection closed before the assertion result was received.");
-            return null;
-        }
-
-        HookPipeMessage? result;
-        try
-        {
-            result = JsonSerializer.Deserialize(resultJson, HookPipeMessageJsonContext.Default.HookPipeMessage);
-        }
-        catch (JsonException ex)
-        {
-            logger.LogWarning("Failed to parse assertion result message: {Error}", ex.Message);
-            return null;
-        }
-
-        switch (result)
-        {
             case AssertionCompletedMessage completed:
-                return completed.Payload.GetRawText();
+                logger.LogInformation(
+                    "Assertion ceremony completed: process={Process} (pid {Pid}) user={User} at {Timestamp}.",
+                    completed.ProcessName ?? "(null)",
+                    completed.Pid,
+                    completed.UserName ?? "(null)",
+                    completed.Timestamp);
+                return true;
 
             case AssertionErrorMessage error:
                 logger.LogWarning("Hook reported assertion error HRESULT 0x{HResult:X8} for rpId={RpId}.", error.HResult, error.RpId ?? "(null)");
-                return null;
+                return false;
 
             default:
-                logger.LogWarning("Unrecognized pipe message type: {Type}; ignoring.", result?.GetType().Name);
-                return null;
+                logger.LogWarning("Unrecognized pipe message type: {Type}; ignoring.", message?.GetType().Name);
+                return false;
         }
     }
 
@@ -313,14 +307,14 @@ internal static class HookCommand
     /// <see cref="PipeStream.IsMessageComplete"/> is <c>true</c>.
     /// </summary>
     /// <returns>The UTF-8 decoded message string, or <c>null</c> when the pipe is closed.</returns>
-    private static string? ReadPipeMessage(NamedPipeServerStream pipe)
+    private static string? ReadPipeMessage(NamedPipeServerStream pipe, CancellationToken cancellationToken)
     {
         var accumulated = new MemoryStream();
         var chunk = new byte[4096];
 
         do
         {
-            int read = pipe.Read(chunk, 0, chunk.Length);
+            int read = pipe.ReadAsync(chunk, 0, chunk.Length, cancellationToken).GetAwaiter().GetResult();
             if (read == 0)
             {
                 return null;
@@ -341,6 +335,10 @@ internal static class HookCommand
     private static PipeSecurity CreateAuthenticatedUsersPipeSecurity()
     {
         var security = new PipeSecurity();
+        security.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier(WellKnownSidType.NetworkSid, null),
+            PipeAccessRights.ReadWrite,
+            AccessControlType.Deny));
         security.AddAccessRule(new PipeAccessRule(
             new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
             PipeAccessRights.ReadWrite,

