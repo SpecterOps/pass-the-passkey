@@ -67,72 +67,14 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         return std::wstring(userName, length - 1);
     }
 
-    std::wstring GetLogPath()
-    {
-        wchar_t tempPath[MAX_PATH]{};
-        const DWORD pathLength = ::GetTempPathW(static_cast<DWORD>(std::size(tempPath)), tempPath);
-        if (pathLength == 0 || pathLength >= std::size(tempPath))
-        {
-            return L"SpecterOps.Passkeys.WebAuthnHook.log";
-        }
-
-        std::wstring path(tempPath, pathLength);
-        path += L"SpecterOps.Passkeys.WebAuthnHook.log";
-        return path;
-    }
-
-    // Write to both the debugger and a temp-file log so the hook is observable
-    // even when the target browser was started outside Visual Studio.
+    // Write to the debugger so the hook is observable when the target browser
+    // was started inside Visual Studio.
     void AppendLog(std::wstring_view message)
     {
         std::wstring line(message);
         line.append(L"\r\n");
 
         ::OutputDebugStringW(line.c_str());
-
-        const std::wstring path = GetLogPath();
-        HANDLE file = ::CreateFileW(
-            path.c_str(),
-            FILE_APPEND_DATA,
-            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-            nullptr,
-            OPEN_ALWAYS,
-            FILE_ATTRIBUTE_NORMAL,
-            nullptr);
-
-        if (file == INVALID_HANDLE_VALUE)
-        {
-            return;
-        }
-
-        const int utf8Length = ::WideCharToMultiByte(
-            CP_UTF8,
-            0,
-            line.c_str(),
-            static_cast<int>(line.size()),
-            nullptr,
-            0,
-            nullptr,
-            nullptr);
-
-        if (utf8Length > 0)
-        {
-            std::string utf8(static_cast<size_t>(utf8Length), '\0');
-            ::WideCharToMultiByte(
-                CP_UTF8,
-                0,
-                line.c_str(),
-                static_cast<int>(line.size()),
-                utf8.data(),
-                utf8Length,
-                nullptr,
-                nullptr);
-
-            DWORD bytesWritten = 0;
-            ::WriteFile(file, utf8.data(), static_cast<DWORD>(utf8.size()), &bytesWritten, nullptr);
-        }
-
-        ::CloseHandle(file);
     }
 
     std::wstring ReadUtf8(const BYTE* buffer, DWORD length)

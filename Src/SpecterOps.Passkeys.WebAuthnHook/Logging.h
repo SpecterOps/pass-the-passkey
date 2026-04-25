@@ -18,10 +18,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
     /// Returns the user name associated with the current process token.
     std::wstring GetCurrentUserName();
 
-    /// Resolves the temp-file path used for persistent hook logging.
-    std::wstring GetLogPath();
-
-    /// Writes a single log line to both OutputDebugString and the temp log file.
+    /// Writes a single log line to OutputDebugString.
     void AppendLog(std::wstring_view message);
 
     /// Decodes a UTF-8 buffer and truncates it to the configured log budget.

