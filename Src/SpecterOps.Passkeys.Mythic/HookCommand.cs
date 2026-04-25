@@ -281,17 +281,17 @@ internal static class HookCommand
                     startedMsg.Timestamp);
                 return false;
 
-            case AssertionCompletedMessage completed:
+            case AssertionCompletedMessage completedMsg:
                 logger.LogInformation(
                     "Assertion ceremony completed: process={Process} (pid {Pid}) user={User} at {Timestamp}.",
-                    completed.ProcessName ?? "(null)",
-                    completed.Pid,
-                    completed.UserName ?? "(null)",
-                    completed.Timestamp);
+                    completedMsg.ProcessName ?? "(null)",
+                    completedMsg.Pid,
+                    completedMsg.UserName ?? "(null)",
+                    completedMsg.Timestamp);
                 return true;
 
-            case AssertionErrorMessage error:
-                logger.LogWarning("Hook reported assertion error HRESULT 0x{HResult:X8} for rpId={RpId}.", error.HResult, error.RpId ?? "(null)");
+            case AssertionErrorMessage errorMsg:
+                logger.LogWarning("Hook reported assertion error HRESULT 0x{HResult:X8} for rpId={RpId}.", errorMsg.HResult, errorMsg.RpId ?? "(null)");
                 return false;
 
             default:
