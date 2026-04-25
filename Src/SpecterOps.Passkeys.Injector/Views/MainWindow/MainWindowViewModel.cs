@@ -52,7 +52,7 @@ public partial class MainWindowViewModel : ObservableObject, IMainWindowViewMode
 
         // Register for credential requests from the WebAuthn bridge
         bridge.CredentialRequested += (_, e) => e.PublicKeyCredential = this.HandleCredentialRequest(e.OptionsJson, e.Mediation);
-        bridge.CredentialCreationRequested += (_, e) => e.PublicKeyCredential = this.HandleCredentialCreation(e.OptionsJson);
+        bridge.CredentialCreationRequested += (_, e) => e.PublicKeyCredential = this.HandleCredentialCreation(e.OptionsJson, e.Mediation);
     }
 
     /// <summary>
@@ -70,10 +70,11 @@ public partial class MainWindowViewModel : ObservableObject, IMainWindowViewMode
     /// Handles a credential creation request from the WebAuthn bridge.
     /// </summary>
     /// <param name="optionsJson">The credential creation options JSON.</param>
+    /// <param name="mediation">The mediation value.</param>
     /// <returns>The credential JSON if successful, null otherwise.</returns>
-    private string? HandleCredentialCreation(string optionsJson)
+    private string? HandleCredentialCreation(string optionsJson, string? mediation)
     {
-        return _attestationDialogService.Show(optionsJson);
+        return _attestationDialogService.Show(optionsJson, mediation);
     }
 
     /// <inheritdoc />

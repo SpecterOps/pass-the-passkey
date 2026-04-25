@@ -15,8 +15,15 @@ public class CredentialCreationEventArgs : EventArgs
     /// </summary>
     public string? PublicKeyCredential { get; set; }
 
-    public CredentialCreationEventArgs(string optionsJson)
+    /// <summary>
+    /// The mediation level for the credential creation request.
+    /// </summary>
+    /// <remarks>Can be "conditional", "optional", "required", or "silent". The default value is "optional".</remarks>
+    public string? Mediation { get; }
+
+    public CredentialCreationEventArgs(string optionsJson, string? mediation = null)
     {
         OptionsJson = optionsJson;
+        Mediation = mediation;
     }
 }
