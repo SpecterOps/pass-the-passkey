@@ -291,7 +291,12 @@ internal static class HookCommand
                 return true;
 
             case AssertionErrorMessage errorMsg:
-                logger.LogWarning("Hook reported assertion error HRESULT 0x{HResult:X8} for rpId={RpId}.", errorMsg.HResult, errorMsg.RpId ?? "(null)");
+                logger.LogWarning(
+                    "Hook reported assertion error HRESULT 0x{HResult:X8} for rpId={RpId} user={User} at {Timestamp}.",
+                    errorMsg.HResult,
+                    errorMsg.RpId ?? "(null)",
+                    errorMsg.UserName ?? "(null)",
+                    errorMsg.Timestamp);
                 return false;
 
             default:
