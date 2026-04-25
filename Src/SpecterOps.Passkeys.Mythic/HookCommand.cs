@@ -265,11 +265,12 @@ internal static class HookCommand
         }
 
         logger.LogInformation(
-            "Assertion ceremony started: rpId={RpId} process={Process} (pid {Pid}) user={User}.",
+            "Assertion ceremony started: rpId={RpId} process={Process} (pid {Pid}) user={User} at {Timestamp}.",
             startedMsg.RpId ?? "(null)",
             startedMsg.ProcessName ?? "(null)",
             startedMsg.Pid,
-            startedMsg.UserName ?? "(null)");
+            startedMsg.UserName ?? "(null)",
+            startedMsg.Timestamp);
 
         string? resultJson = ReadPipeMessage(pipe);
         if (resultJson is null)
