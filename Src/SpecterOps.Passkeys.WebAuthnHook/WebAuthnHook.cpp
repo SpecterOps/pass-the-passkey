@@ -150,6 +150,81 @@ namespace SpecterOps::Passkeys::WebAuthnHook
                        nullptr)
                 && bytesWritten == message.size();
         }
+
+        std::string WideToUtf8(std::wstring_view wide)
+        {
+            if (wide.empty())
+            {
+                return {};
+            }
+
+            const int length = ::WideCharToMultiByte(
+                CP_UTF8, 0,
+                wide.data(), static_cast<int>(wide.size()),
+                nullptr, 0, nullptr, nullptr);
+
+            if (length <= 0)
+            {
+                return {};
+            }
+
+            std::string utf8(static_cast<size_t>(length), '\0');
+            ::WideCharToMultiByte(
+                CP_UTF8, 0,
+                wide.data(), static_cast<int>(wide.size()),
+                utf8.data(), length, nullptr, nullptr);
+            return utf8;
+        }
+
+        std::string JsonEscapeString(std::string_view str)
+        {
+            std::string result;
+            result.reserve(str.size());
+            for (const unsigned char c : str)
+            {
+                switch (c)
+                {
+                case '"':  result += "\\\""; break;
+                case '\\': result += "\\\\"; break;
+                case '\n': result += "\\n";  break;
+                case '\r': result += "\\r";  break;
+                case '\t': result += "\\t";  break;
+                default:
+                    if (c < 0x20)
+                    {
+                        char buf[8];
+                        snprintf(buf, sizeof(buf), "\\u%04X", static_cast<unsigned>(c));
+                        result += buf;
+                    }
+                    else
+                    {
+                        result += static_cast<char>(c);
+                    }
+                    break;
+                }
+            }
+            return result;
+        }
+
+        std::string BuildAssertionStartedMessage(LPCWSTR rpId)
+        {
+            const std::string rpIdEscaped      = JsonEscapeString(WideToUtf8(rpId ? rpId : L""));
+            const std::string processNameEscaped = JsonEscapeString(WideToUtf8(GetCurrentProcessName()));
+            const std::string userNameEscaped  = JsonEscapeString(WideToUtf8(GetCurrentUserName()));
+            const DWORD pid = ::GetCurrentProcessId();
+
+            std::string msg;
+            msg += R"({"type":"AssertionStarted","rpId":")";
+            msg += rpIdEscaped;
+            msg += R"(","processName":")";
+            msg += processNameEscaped;
+            msg += R"(","userName":")";
+            msg += userNameEscaped;
+            msg += R"(","pid":)";
+            msg += std::to_string(pid);
+            msg += '}';
+            return msg;
+        }
     }
 
     HRESULT WINAPI HookWebAuthNAuthenticatorGetAssertion(
@@ -175,7 +250,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
 
         if (pipeOpen)
         {
-            WritePipeMessage(pipe, R"({"type":"started"})");
+            WritePipeMessage(pipe, BuildAssertionStartedMessage(rpId));
         }
 
         const HRESULT result = TrueWebAuthNAuthenticatorGetAssertion(hwnd, rpId, clientData, options, assertion);
@@ -187,14 +262,14 @@ namespace SpecterOps::Passkeys::WebAuthnHook
                 const std::string payload = SerializeAssertionResponse(clientData, *assertion);
                 if (!payload.empty())
                 {
-                    const std::string msg = R"({"type":"completed","payload":)" + payload + "}";
+                    const std::string msg = R"({"type":"AssertionCompleted","payload":)" + payload + "}";
                     WritePipeMessage(pipe, msg);
                 }
             }
             else
             {
                 const std::string msg =
-                    R"({"type":"error","hresult":)" + std::to_string(static_cast<uint32_t>(result)) + "}";
+                    R"({"type":"AssertionError","hresult":)" + std::to_string(static_cast<uint32_t>(result)) + "}";
                 WritePipeMessage(pipe, msg);
             }
 

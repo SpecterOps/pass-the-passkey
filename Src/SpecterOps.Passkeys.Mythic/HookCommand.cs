@@ -33,15 +33,6 @@ internal static class HookCommand
     /// <summary>Name of the local named pipe that the hook DLL writes assertion responses to.</summary>
     private const string HookPipeName = "WebAuthnHook";
 
-    /// <summary>Pipe message type sent by the hook DLL when a WebAuthn assertion ceremony begins.</summary>
-    private const string MessageTypeStarted = "started";
-
-    /// <summary>Pipe message type sent by the hook DLL when an assertion completes successfully.</summary>
-    private const string MessageTypeCompleted = "completed";
-
-    /// <summary>Pipe message type sent by the hook DLL when the WebAuthn API returns an error.</summary>
-    private const string MessageTypeError = "error";
-
     /// <summary>Default timeout for <c>hook wait</c>.</summary>
     private static readonly TimeSpan DefaultHookWaitTimeout = TimeSpan.FromMinutes(10);
 
@@ -238,11 +229,13 @@ internal static class HookCommand
 
     /// <summary>
     /// Reads and dispatches the two pipe messages that the hook DLL sends per assertion:
-    /// a <c>started</c> notification followed by either a <c>completed</c> message carrying
-    /// the JSON assertion payload or an <c>error</c> message carrying the HRESULT.
+    /// an <see cref="HookMessageType.AssertionStarted"/> notification followed by either
+    /// <see cref="HookMessageType.AssertionCompleted"/> carrying the JSON assertion payload
+    /// or <see cref="HookMessageType.AssertionError"/> carrying the HRESULT.
+    /// Unknown future message types are logged and skipped.
     /// </summary>
     /// <returns>
-    /// The raw JSON assertion object from the <c>completed</c> message,
+    /// The raw JSON assertion object from the <c>AssertionCompleted</c> message,
     /// or <c>null</c> if the session ended without a usable payload.
     /// </returns>
     private static string? ProcessPipeMessages(NamedPipeServerStream pipe, ILogger logger)
@@ -254,23 +247,29 @@ internal static class HookCommand
             return null;
         }
 
+        HookPipeMessage? started;
         try
         {
-            using var doc = JsonDocument.Parse(startedJson);
-            string? type = doc.RootElement.GetProperty("type").GetString();
-            if (type != MessageTypeStarted)
-            {
-                logger.LogWarning("Unexpected first pipe message type: {Type}.", type);
-                return null;
-            }
+            started = JsonSerializer.Deserialize(startedJson, HookPipeMessageJsonContext.Default.HookPipeMessage);
         }
         catch (JsonException ex)
         {
-            logger.LogWarning("Failed to parse 'started' pipe message: {Error}", ex.Message);
+            logger.LogWarning("Failed to parse 'AssertionStarted' pipe message: {Error}", ex.Message);
             return null;
         }
 
-        logger.LogInformation("Assertion ceremony started; waiting for result...");
+        if (started?.Type != HookMessageType.AssertionStarted)
+        {
+            logger.LogWarning("Expected 'AssertionStarted' pipe message; received: {Type}.", started?.Type);
+            return null;
+        }
+
+        logger.LogInformation(
+            "Assertion ceremony started: rpId={RpId} process={Process} (pid {Pid}) user={User}.",
+            started.RpId ?? "(null)",
+            started.ProcessName ?? "(null)",
+            started.Pid,
+            started.UserName ?? "(null)");
 
         string? resultJson = ReadPipeMessage(pipe);
         if (resultJson is null)
@@ -279,30 +278,29 @@ internal static class HookCommand
             return null;
         }
 
+        HookPipeMessage? result;
         try
         {
-            using var doc = JsonDocument.Parse(resultJson);
-            string? type = doc.RootElement.GetProperty("type").GetString();
-
-            if (type == MessageTypeCompleted)
-            {
-                return doc.RootElement.GetProperty("payload").GetRawText();
-            }
-
-            if (type == MessageTypeError)
-            {
-                uint hresult = doc.RootElement.GetProperty("hresult").GetUInt32();
-                logger.LogWarning("Hook reported assertion error HRESULT 0x{HResult:X8}.", hresult);
-                return null;
-            }
-
-            logger.LogWarning("Unexpected pipe message type: {Type}.", type);
-            return null;
+            result = JsonSerializer.Deserialize(resultJson, HookPipeMessageJsonContext.Default.HookPipeMessage);
         }
         catch (JsonException ex)
         {
             logger.LogWarning("Failed to parse assertion result message: {Error}", ex.Message);
             return null;
+        }
+
+        switch (result?.Type)
+        {
+            case HookMessageType.AssertionCompleted:
+                return result.Payload.GetRawText();
+
+            case HookMessageType.AssertionError:
+                logger.LogWarning("Hook reported assertion error HRESULT 0x{HResult:X8}.", result.HResult);
+                return null;
+
+            default:
+                logger.LogWarning("Unrecognized pipe message type: {Type}; ignoring.", result?.Type);
+                return null;
         }
     }
 
