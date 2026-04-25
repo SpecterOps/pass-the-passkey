@@ -119,8 +119,8 @@ internal static class HookCommand
         {
             int? timeoutSeconds = parseResult.GetValue(waitTimeoutOption);
             return timeoutSeconds.HasValue
-                ? WaitForHookResponses(logger, TimeSpan.FromSeconds(timeoutSeconds.Value))
-                : WaitForHookResponses(logger);
+                ? WaitForHookResponsesAsync(logger, TimeSpan.FromSeconds(timeoutSeconds.Value)).GetAwaiter().GetResult()
+                : WaitForHookResponsesAsync(logger).GetAwaiter().GetResult();
         });
 
         return new Command("hook", "Manage the native WebAuthn hook DLL in browser processes.")
@@ -138,8 +138,8 @@ internal static class HookCommand
     /// Started and error messages are logged but do not stop the listener.
     /// </summary>
     /// <returns>0 if an assertion was captured; 1 on timeout with no captures.</returns>
-    private static int WaitForHookResponses(ILogger logger)
-        => WaitForHookResponses(logger, DefaultHookWaitTimeout);
+    private static Task<int> WaitForHookResponsesAsync(ILogger logger)
+        => WaitForHookResponsesAsync(logger, DefaultHookWaitTimeout);
 
     /// <summary>
     /// Creates the <c>WebAuthnHook</c> named pipe and blocks until the hook DLL sends one successful
@@ -147,7 +147,7 @@ internal static class HookCommand
     /// Started and error messages are logged but do not stop the listener.
     /// </summary>
     /// <returns>0 if an assertion was captured; 1 on timeout with no captures.</returns>
-    private static int WaitForHookResponses(ILogger logger, TimeSpan timeout)
+    private static async Task<int> WaitForHookResponsesAsync(ILogger logger, TimeSpan timeout)
     {
         PipeSecurity security = CreateAuthenticatedUsersPipeSecurity();
 
@@ -181,7 +181,7 @@ internal static class HookCommand
                 using var cts = new CancellationTokenSource(remaining);
                 try
                 {
-                    pipe.WaitForConnectionAsync(cts.Token).GetAwaiter().GetResult();
+                    await pipe.WaitForConnectionAsync(cts.Token);
                 }
                 catch (OperationCanceledException)
                 {
@@ -203,7 +203,7 @@ internal static class HookCommand
                             break;
                         }
 
-                        if (ProcessPipeMessage(pipe, logger, cts.Token))
+                        if (await ProcessPipeMessageAsync(pipe, logger, cts.Token))
                         {
                             receivedCount++;
                         }
@@ -247,9 +247,9 @@ internal static class HookCommand
     /// Reads and dispatches one hook message and writes the raw JSON line to stdout.
     /// Returns <c>true</c> only when the message is an <see cref="AssertionCompletedMessage"/>.
     /// </summary>
-    private static bool ProcessPipeMessage(NamedPipeServerStream pipe, ILogger logger, CancellationToken cancellationToken)
+    private static async Task<bool> ProcessPipeMessageAsync(NamedPipeServerStream pipe, ILogger logger, CancellationToken cancellationToken)
     {
-        string? messageJson = ReadPipeMessage(pipe, cancellationToken);
+        string? messageJson = await ReadPipeMessageAsync(pipe, cancellationToken);
         if (messageJson is null)
         {
             logger.LogWarning("Pipe connection closed without receiving any message.");
@@ -311,14 +311,14 @@ internal static class HookCommand
     /// <see cref="PipeStream.IsMessageComplete"/> is <c>true</c>.
     /// </summary>
     /// <returns>The UTF-8 decoded message string, or <c>null</c> when the pipe is closed.</returns>
-    private static string? ReadPipeMessage(NamedPipeServerStream pipe, CancellationToken cancellationToken)
+    private static async Task<string?> ReadPipeMessageAsync(NamedPipeServerStream pipe, CancellationToken cancellationToken)
     {
         var accumulated = new MemoryStream();
         var chunk = new byte[4096];
 
         do
         {
-            int read = pipe.ReadAsync(chunk, 0, chunk.Length, cancellationToken).GetAwaiter().GetResult();
+            int read = await pipe.ReadAsync(chunk, 0, chunk.Length, cancellationToken);
             if (read == 0)
             {
                 return null;
