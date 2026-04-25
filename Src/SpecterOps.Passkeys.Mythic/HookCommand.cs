@@ -139,8 +139,13 @@ internal static class HookCommand
     /// Started and error messages are logged but do not stop the listener.
     /// </summary>
     /// <returns>0 if an assertion was captured; 1 on timeout with no captures.</returns>
-    private static int WaitForHookResponses(ILogger logger, TimeSpan timeout)
+    private static int WaitForHookResponses(ILogger logger, TimeSpan timeout = default)
     {
+        if (timeout == default)
+        {
+            timeout = DefaultHookWaitTimeout;
+        }
+
         PipeSecurity security = CreateAuthenticatedUsersPipeSecurity();
 
         NamedPipeServerStream pipe;
