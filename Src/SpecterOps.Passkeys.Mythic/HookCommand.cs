@@ -229,9 +229,9 @@ internal static class HookCommand
 
     /// <summary>
     /// Reads and dispatches the two pipe messages that the hook DLL sends per assertion:
-    /// an <see cref="HookMessageType.AssertionStarted"/> notification followed by either
-    /// <see cref="HookMessageType.AssertionCompleted"/> carrying the JSON assertion payload
-    /// or <see cref="HookMessageType.AssertionError"/> carrying the HRESULT.
+    /// an <see cref="AssertionStartedMessage"/> notification followed by either
+    /// an <see cref="AssertionCompletedMessage"/> carrying the JSON assertion payload
+    /// or an <see cref="AssertionErrorMessage"/> carrying the HRESULT.
     /// Unknown future message types are logged and skipped.
     /// </summary>
     /// <returns>
@@ -258,18 +258,18 @@ internal static class HookCommand
             return null;
         }
 
-        if (started?.Type != HookMessageType.AssertionStarted)
+        if (started is not AssertionStartedMessage startedMsg)
         {
-            logger.LogWarning("Expected 'AssertionStarted' pipe message; received: {Type}.", started?.Type);
+            logger.LogWarning("Expected 'AssertionStarted' pipe message; received: {Type}.", started?.GetType().Name);
             return null;
         }
 
         logger.LogInformation(
             "Assertion ceremony started: rpId={RpId} process={Process} (pid {Pid}) user={User}.",
-            started.RpId ?? "(null)",
-            started.ProcessName ?? "(null)",
-            started.Pid,
-            started.UserName ?? "(null)");
+            startedMsg.RpId ?? "(null)",
+            startedMsg.ProcessName ?? "(null)",
+            startedMsg.Pid,
+            startedMsg.UserName ?? "(null)");
 
         string? resultJson = ReadPipeMessage(pipe);
         if (resultJson is null)
@@ -289,17 +289,17 @@ internal static class HookCommand
             return null;
         }
 
-        switch (result?.Type)
+        switch (result)
         {
-            case HookMessageType.AssertionCompleted:
-                return result.Payload.GetRawText();
+            case AssertionCompletedMessage completed:
+                return completed.Payload.GetRawText();
 
-            case HookMessageType.AssertionError:
-                logger.LogWarning("Hook reported assertion error HRESULT 0x{HResult:X8}.", result.HResult);
+            case AssertionErrorMessage error:
+                logger.LogWarning("Hook reported assertion error HRESULT 0x{HResult:X8}.", error.HResult);
                 return null;
 
             default:
-                logger.LogWarning("Unrecognized pipe message type: {Type}; ignoring.", result?.Type);
+                logger.LogWarning("Unrecognized pipe message type: {Type}; ignoring.", result?.GetType().Name);
                 return null;
         }
     }
