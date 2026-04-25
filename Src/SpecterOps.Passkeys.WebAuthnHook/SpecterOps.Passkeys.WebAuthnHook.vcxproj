@@ -88,11 +88,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="Logging.h" />
+    <ClInclude Include="NamedPipe.h" />
     <ClInclude Include="WebAuthnHook.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DllMain.cpp" />
     <ClCompile Include="Logging.cpp" />
+    <ClCompile Include="NamedPipe.cpp" />
     <ClCompile Include="WebAuthnHook.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

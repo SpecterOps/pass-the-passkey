@@ -7,6 +7,10 @@ namespace SpecterOps.Passkeys.Mythic;
 /// </summary>
 internal sealed class AssertionErrorMessage : HookPipeMessage
 {
+    /// <summary>Relying party identifier from the WebAuthn assertion request.</summary>
+    [JsonPropertyName("rpId")]
+    public string? RpId { get; init; }
+
     /// <summary>HRESULT returned by the WebAuthn API when the assertion failed.</summary>
     [JsonPropertyName("hresult")]
     public uint HResult { get; init; }

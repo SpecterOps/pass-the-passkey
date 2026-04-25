@@ -111,14 +111,9 @@ internal static class HookCommand
         {
             Description = $"Timeout in seconds (default: {DefaultHookWaitTimeout.TotalSeconds:0})"
         };
-        var waitCountOption = new Option<int?>("--count", "-n")
-        {
-            Description = "Maximum number of assertions to capture (default: unlimited)"
-        };
         var waitCommand = new Command("wait", "Create the WebAuthnHook named pipe and listen for assertion responses from the hook DLL.")
         {
-            waitTimeoutOption,
-            waitCountOption
+            waitTimeoutOption
         };
         waitCommand.SetAction(parseResult =>
         {
@@ -126,8 +121,7 @@ internal static class HookCommand
             TimeSpan timeout = timeoutSeconds.HasValue
                 ? TimeSpan.FromSeconds(timeoutSeconds.Value)
                 : DefaultHookWaitTimeout;
-            int maxCount = parseResult.GetValue(waitCountOption) ?? 0;
-            return WaitForHookResponses(logger, timeout, maxCount);
+            return WaitForHookResponses(logger, timeout);
         });
 
         return new Command("hook", "Manage the native WebAuthn hook DLL in browser processes.")
@@ -140,11 +134,12 @@ internal static class HookCommand
     }
 
     /// <summary>
-    /// Creates the <c>WebAuthnHook</c> named pipe and blocks until the hook DLL sends an assertion response
-    /// (or the timeout/count limit is reached), printing each JSON response to stdout.
+    /// Creates the <c>WebAuthnHook</c> named pipe and blocks until the hook DLL sends one successful
+    /// assertion response (or the timeout expires), printing the JSON to stdout.
+    /// Started and error messages are logged but do not stop the listener.
     /// </summary>
-    /// <returns>0 if at least one assertion was captured; 1 on timeout with no captures.</returns>
-    private static int WaitForHookResponses(ILogger logger, TimeSpan timeout, int maxCount)
+    /// <returns>0 if an assertion was captured; 1 on timeout with no captures.</returns>
+    private static int WaitForHookResponses(ILogger logger, TimeSpan timeout)
     {
         PipeSecurity security = CreateAuthenticatedUsersPipeSecurity();
 
@@ -170,15 +165,14 @@ internal static class HookCommand
         using (pipe)
         {
             logger.LogInformation(
-                "Listening on \\\\.\\pipe\\{Name} for hook assertion responses (timeout: {Timeout:0}s, max: {Max})...",
+                "Listening on \\\\.\\pipe\\{Name} for hook assertion responses (timeout: {Timeout:0}s)...",
                 HookPipeName,
-                timeout.TotalSeconds,
-                maxCount <= 0 ? "unlimited" : maxCount.ToString(CultureInfo.InvariantCulture));
+                timeout.TotalSeconds);
 
             var deadline = DateTime.UtcNow + timeout;
             int received = 0;
 
-            while (maxCount <= 0 || received < maxCount)
+            while (received == 0)
             {
                 TimeSpan remaining = deadline - DateTime.UtcNow;
                 if (remaining <= TimeSpan.Zero)
@@ -222,7 +216,7 @@ internal static class HookCommand
                 return 1;
             }
 
-            logger.LogInformation("Captured {Count} assertion response(s).", received);
+            logger.LogInformation("Captured assertion response.");
             return 0;
         }
     }
@@ -296,7 +290,7 @@ internal static class HookCommand
                 return completed.Payload.GetRawText();
 
             case AssertionErrorMessage error:
-                logger.LogWarning("Hook reported assertion error HRESULT 0x{HResult:X8}.", error.HResult);
+                logger.LogWarning("Hook reported assertion error HRESULT 0x{HResult:X8} for rpId={RpId}.", error.HResult, error.RpId ?? "(null)");
                 return null;
 
             default:

