@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32.SafeHandles;
 using Windows.Win32;
@@ -32,11 +33,14 @@ internal static class HookCommand
     /// <summary>Name of the local named pipe that the hook DLL writes assertion responses to.</summary>
     private const string HookPipeName = "WebAuthnHook";
 
-    /// <summary>Sentinel line written by the hook DLL before the JSON payload.</summary>
-    private const string PipeSentinelStart = "start";
+    /// <summary>Pipe message type sent by the hook DLL when a WebAuthn assertion ceremony begins.</summary>
+    private const string MessageTypeStarted = "started";
 
-    /// <summary>Sentinel line written by the hook DLL after the JSON payload.</summary>
-    private const string PipeSentinelEnd = "end";
+    /// <summary>Pipe message type sent by the hook DLL when an assertion completes successfully.</summary>
+    private const string MessageTypeCompleted = "completed";
+
+    /// <summary>Pipe message type sent by the hook DLL when the WebAuthn API returns an error.</summary>
+    private const string MessageTypeError = "error";
 
     /// <summary>Default timeout for <c>hook wait</c>.</summary>
     private static readonly TimeSpan DefaultHookWaitTimeout = TimeSpan.FromMinutes(10);
@@ -160,7 +164,7 @@ internal static class HookCommand
                 HookPipeName,
                 PipeDirection.In,
                 maxNumberOfServerInstances: 1,
-                PipeTransmissionMode.Byte,
+                PipeTransmissionMode.Message,
                 PipeOptions.None,
                 inBufferSize: 0,
                 outBufferSize: 0,
@@ -208,7 +212,7 @@ internal static class HookCommand
 
                 try
                 {
-                    string? json = ReadPipeAssertionResponse(pipe, logger);
+                    string? json = ProcessPipeMessages(pipe, logger);
                     if (json is not null)
                     {
                         received++;
@@ -233,51 +237,99 @@ internal static class HookCommand
     }
 
     /// <summary>
-    /// Reads one assertion response from <paramref name="pipe"/> by consuming lines between the
-    /// <c>start</c> and <c>end</c> sentinel lines written by the hook DLL.
+    /// Reads and dispatches the two pipe messages that the hook DLL sends per assertion:
+    /// a <c>started</c> notification followed by either a <c>completed</c> message carrying
+    /// the JSON assertion payload or an <c>error</c> message carrying the HRESULT.
     /// </summary>
-    /// <returns>The JSON payload, or <c>null</c> if the connection was closed before a complete message arrived.</returns>
-    private static string? ReadPipeAssertionResponse(NamedPipeServerStream pipe, ILogger logger)
+    /// <returns>
+    /// The raw JSON assertion object from the <c>completed</c> message,
+    /// or <c>null</c> if the session ended without a usable payload.
+    /// </returns>
+    private static string? ProcessPipeMessages(NamedPipeServerStream pipe, ILogger logger)
     {
-        using var reader = new StreamReader(pipe, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 4096, leaveOpen: true);
-        var bodyLines = new List<string>();
-        bool started = false;
-        string? line;
-
-        while ((line = reader.ReadLine()) != null)
+        string? startedJson = ReadPipeMessage(pipe);
+        if (startedJson is null)
         {
-            if (!started)
-            {
-                if (line == PipeSentinelStart)
-                {
-                    started = true;
-                }
-
-                continue;
-            }
-
-            if (line == PipeSentinelEnd)
-            {
-                return string.Join(Environment.NewLine, bodyLines);
-            }
-
-            if (line == PipeSentinelStart)
-            {
-                // Malformed stream: a new 'start' arrived before the previous message ended.
-                logger.LogWarning("Unexpected 'start' sentinel received mid-message; discarding partial payload and starting over.");
-                bodyLines.Clear();
-                continue;
-            }
-
-            bodyLines.Add(line);
+            logger.LogWarning("Pipe connection closed without receiving any message.");
+            return null;
         }
 
-        if (started)
+        try
         {
-            logger.LogWarning("Pipe connection closed before the 'end' marker was received.");
+            using var doc = JsonDocument.Parse(startedJson);
+            string? type = doc.RootElement.GetProperty("type").GetString();
+            if (type != MessageTypeStarted)
+            {
+                logger.LogWarning("Unexpected first pipe message type: {Type}.", type);
+                return null;
+            }
+        }
+        catch (JsonException ex)
+        {
+            logger.LogWarning("Failed to parse 'started' pipe message: {Error}", ex.Message);
+            return null;
         }
 
-        return null;
+        logger.LogInformation("Assertion ceremony started; waiting for result...");
+
+        string? resultJson = ReadPipeMessage(pipe);
+        if (resultJson is null)
+        {
+            logger.LogWarning("Pipe connection closed before the assertion result was received.");
+            return null;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(resultJson);
+            string? type = doc.RootElement.GetProperty("type").GetString();
+
+            if (type == MessageTypeCompleted)
+            {
+                return doc.RootElement.GetProperty("payload").GetRawText();
+            }
+
+            if (type == MessageTypeError)
+            {
+                uint hresult = doc.RootElement.GetProperty("hresult").GetUInt32();
+                logger.LogWarning("Hook reported assertion error HRESULT 0x{HResult:X8}.", hresult);
+                return null;
+            }
+
+            logger.LogWarning("Unexpected pipe message type: {Type}.", type);
+            return null;
+        }
+        catch (JsonException ex)
+        {
+            logger.LogWarning("Failed to parse assertion result message: {Error}", ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads one complete pipe message from <paramref name="pipe"/> operating in
+    /// <see cref="PipeTransmissionMode.Message"/> mode. Accumulates chunks until
+    /// <see cref="PipeStream.IsMessageComplete"/> is <c>true</c>.
+    /// </summary>
+    /// <returns>The UTF-8 decoded message string, or <c>null</c> when the pipe is closed.</returns>
+    private static string? ReadPipeMessage(NamedPipeServerStream pipe)
+    {
+        var accumulated = new MemoryStream();
+        var chunk = new byte[4096];
+
+        do
+        {
+            int read = pipe.Read(chunk, 0, chunk.Length);
+            if (read == 0)
+            {
+                return null;
+            }
+
+            accumulated.Write(chunk, 0, read);
+        }
+        while (!pipe.IsMessageComplete);
+
+        return Encoding.UTF8.GetString(accumulated.ToArray());
     }
 
     /// <summary>

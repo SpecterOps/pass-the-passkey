@@ -136,51 +136,19 @@ namespace SpecterOps::Passkeys::WebAuthnHook
             return json;
         }
 
-        bool WritePipeText(HANDLE pipe, std::string_view text)
+        // Each WriteFile call on a PIPE_TYPE_MESSAGE pipe creates one atomic message,
+        // so the server can read each send as a discrete, length-prefixed unit without
+        // any start/end sentinel framing.
+        bool WritePipeMessage(HANDLE pipe, std::string_view message)
         {
             DWORD bytesWritten = 0;
             return ::WriteFile(
                        pipe,
-                       text.data(),
-                       static_cast<DWORD>(text.size()),
+                       message.data(),
+                       static_cast<DWORD>(message.size()),
                        &bytesWritten,
                        nullptr)
-                && bytesWritten == text.size();
-        }
-
-        bool TryForwardAssertionToPipe(
-            const WEBAUTHN_CLIENT_DATA* clientData,
-            const WEBAUTHN_ASSERTION* assertion)
-        {
-            HANDLE pipe = ::CreateFileW(
-                WebAuthnHookPipeName,
-                GENERIC_WRITE,
-                0,
-                nullptr,
-                OPEN_EXISTING,
-                FILE_ATTRIBUTE_NORMAL,
-                nullptr);
-
-            if (pipe == INVALID_HANDLE_VALUE)
-            {
-                return false;
-            }
-
-            const std::string response = SerializeAssertionResponse(clientData, assertion);
-            if (response.empty())
-            {
-                ::CloseHandle(pipe);
-                return false;
-            }
-
-            const bool success =
-                WritePipeText(pipe, "start\n")
-                && WritePipeText(pipe, response)
-                && WritePipeText(pipe, "\nend\n")
-                && ::FlushFileBuffers(pipe);
-
-            ::CloseHandle(pipe);
-            return success;
+                && bytesWritten == message.size();
         }
     }
 
@@ -192,13 +160,48 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         WEBAUTHN_ASSERTION** assertion)
     {
         AppendLog(FormatAssertionRequest(hwnd, rpId, clientData, options));
-        const HRESULT result = TrueWebAuthNAuthenticatorGetAssertion(hwnd, rpId, clientData, options, assertion);
-        if (FAILED(result) || assertion == nullptr || *assertion == nullptr)
+
+        // Open the pipe before calling the real API so the "started" message arrives
+        // before the user is prompted.  A missing listener is silently ignored.
+        const HANDLE pipe = ::CreateFileW(
+            WebAuthnHookPipeName,
+            GENERIC_WRITE,
+            0,
+            nullptr,
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr);
+        const bool pipeOpen = pipe != INVALID_HANDLE_VALUE;
+
+        if (pipeOpen)
         {
-            return result;
+            WritePipeMessage(pipe, R"({"type":"started"})");
         }
 
-        TryForwardAssertionToPipe(clientData, *assertion);
+        const HRESULT result = TrueWebAuthNAuthenticatorGetAssertion(hwnd, rpId, clientData, options, assertion);
+
+        if (pipeOpen)
+        {
+            if (SUCCEEDED(result) && assertion != nullptr && *assertion != nullptr)
+            {
+                const std::string payload = SerializeAssertionResponse(clientData, *assertion);
+                if (!payload.empty())
+                {
+                    const std::string msg = R"({"type":"completed","payload":)" + payload + "}";
+                    WritePipeMessage(pipe, msg);
+                }
+            }
+            else
+            {
+                const std::string msg =
+                    R"({"type":"error","hresult":)" + std::to_string(static_cast<uint32_t>(result)) + "}";
+                WritePipeMessage(pipe, msg);
+            }
+
+            ::FlushFileBuffers(pipe);
+            ::CloseHandle(pipe);
+        }
+
         return result;
     }
 
