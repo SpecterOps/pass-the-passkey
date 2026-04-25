@@ -41,7 +41,7 @@ jobs:
       run: dotnet publish Src/SpecterOps.Passkeys.Injector --runtime win-arm64 --no-restore
 
     - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v2
+      uses: microsoft/setup-msbuild@v3
 
     - name: Build WebAuthn Hook x86
       run: msbuild Src/SpecterOps.Passkeys.WebAuthnHook/SpecterOps.Passkeys.WebAuthnHook.vcxproj /p:Configuration=Release /p:Platform=Win32 /m
