@@ -1,14 +1,18 @@
+using System.Buffers.Text;
 using System.CommandLine;
-using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
+using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32.SafeHandles;
 using Windows.Win32;
 using Windows.Win32.Foundation;
-using Windows.Win32.System.Memory;
 using Windows.Win32.System.SystemInformation;
 using Windows.Win32.System.Threading;
 
@@ -26,8 +30,29 @@ internal static class HookCommand
     /// <summary>Common file-name prefix of the architecture-specific hook DLLs (e.g., <c>WebAuthnHook_x64.dll</c>).</summary>
     private const string HookModulePrefix = "WebAuthnHook_";
 
+    /// <summary>Default local named pipe that the hook DLL writes assertion responses to.</summary>
+    private const string DefaultHookPipeName = "WebAuthnHook";
+
+    /// <summary>Prefix used when displaying or accepting a fully qualified local named pipe path.</summary>
+    private const string LocalNamedPipePrefix = @"\\.\pipe\";
+
+    /// <summary>Named pipe input buffer size for hook-to-server messages.</summary>
+    private const int HookPipeInputBufferSize = 10 * 1024;
+
+    /// <summary>Named pipe output buffer size for server-to-hook action messages.</summary>
+    private const int HookPipeOutputBufferSize = 5 * 1024;
+
+    /// <summary>Default timeout for <c>hook wait --challenge</c>.</summary>
+    private static readonly TimeSpan DefaultChallengeWaitTimeout = TimeSpan.FromMinutes(10);
+
     /// <summary>Maximum number of remote <c>FreeLibrary</c> calls issued to decrement the hook's load count.</summary>
     private const int MaxUnloadAttempts = 8;
+
+    /// <summary>Name of the <c>LoadLibraryW</c> export used for remote DLL injection.</summary>
+    private const string LoadLibraryWExport = "LoadLibraryW";
+
+    /// <summary>Name of the <c>FreeLibrary</c> export used for remote DLL unloading.</summary>
+    private const string FreeLibraryExport = "FreeLibrary";
 
     /// <summary>
     /// Process names that can trigger Windows WebAuthn and are therefore candidates for injection.
@@ -45,7 +70,22 @@ internal static class HookCommand
     /// <summary>
     /// Captured information about a single browser process.
     /// </summary>
-    private sealed record BrowserProcessInfo(int Pid, string Name, bool HasMainWindow, bool HasWebAuthn, bool HasHook);
+    private sealed class BrowserProcessInfo(int pid, string name, bool hasMainWindow, bool hasWebAuthn, bool hasHook)
+    {
+        public int Pid { get; init; } = pid;
+        public string Name { get; init; } = name;
+        public bool HasMainWindow { get; init; } = hasMainWindow;
+        public bool HasWebAuthn { get; init; } = hasWebAuthn;
+        public bool HasHook { get; init; } = hasHook;
+
+        public static BrowserProcessInfo Create(Process process) => new(
+            process.Id,
+            process.ProcessName,
+            HasMainWindow(process),
+            HasModuleLoaded(process, WebAuthnModuleName),
+            TryGetHookModule(process, out _)
+        );
+    }
 
     /// <summary>
     /// Creates the <c>hook</c> command with <c>attach</c>, <c>detach</c>, and <c>list</c> subcommands.
@@ -97,12 +137,386 @@ internal static class HookCommand
         var listCommand = new Command("list", "List running browser processes and the state of the native WebAuthn hook.");
         listCommand.SetAction(_ => ListBrowsers(logger));
 
+        var waitRpIdOption = new Option<string?>("--rpid", "--relying-party", "-r")
+        {
+            Description = "Relying party ID to match before sending wait/capture/inject actions."
+        };
+        var waitChallengeOption = new Option<string?>("--challenge", "-c")
+        {
+            Description = "Base64url-encoded challenge to inject when the relying party ID matches."
+        };
+        var waitCrossSessionOption = new Option<bool>("--cross-session", "--capture")
+        {
+            Description = "Capture a matching assertion for cross-session use instead of letting the browser receive it."
+        };
+        var waitMonitorOption = new Option<bool>("--monitor", "-m")
+        {
+            Description = "Monitor hook messages without intervening; assertion starts receive continue."
+        };
+        var waitNamedPipeOption = new Option<string?>("--named-pipe", "--pipe", "-p")
+        {
+            Description = $"Named pipe name or local \\\\.\\pipe\\ path to listen on. Defaults to {DefaultHookPipeName}."
+        };
+        var waitCommand = new Command("wait", "Create the hook named pipe and listen for assertion responses from the hook DLL.")
+        {
+            waitRpIdOption,
+            waitChallengeOption,
+            waitCrossSessionOption,
+            waitMonitorOption,
+            waitNamedPipeOption
+        };
+        waitCommand.SetAction((parseResult, cancellationToken) =>
+        {
+            string? rpId = parseResult.GetValue(waitRpIdOption);
+            string? challenge = parseResult.GetValue(waitChallengeOption);
+            bool crossSession = parseResult.GetValue(waitCrossSessionOption);
+            bool monitor = parseResult.GetValue(waitMonitorOption);
+            string? namedPipe = parseResult.GetValue(waitNamedPipeOption);
+            string pipeName = NormalizeLocalPipeName(namedPipe ?? DefaultHookPipeName);
+
+            if (string.IsNullOrWhiteSpace(pipeName))
+            {
+                logger.LogError("The --named-pipe value must not be empty.");
+                return Task.FromResult(1);
+            }
+
+            if (monitor && (!string.IsNullOrWhiteSpace(rpId) || !string.IsNullOrWhiteSpace(challenge) || crossSession))
+            {
+                logger.LogError("Specify --monitor by itself, optionally with --named-pipe.");
+                return Task.FromResult(1);
+            }
+
+            if (string.IsNullOrWhiteSpace(rpId) && (!string.IsNullOrWhiteSpace(challenge) || crossSession))
+            {
+                logger.LogError("Specify --rpid when using --challenge or --cross-session.");
+                return Task.FromResult(1);
+            }
+
+            if (!string.IsNullOrWhiteSpace(challenge) && crossSession)
+            {
+                logger.LogError("Specify either --challenge or --cross-session, not both.");
+                return Task.FromResult(1);
+            }
+
+            if (!string.IsNullOrWhiteSpace(challenge) && !Base64Url.IsValid(challenge))
+            {
+                logger.LogError("The --challenge value must be a base64url token.");
+                return Task.FromResult(1);
+            }
+
+            return WaitForHookResponsesAsync(logger, rpId, challenge, crossSession, monitor, pipeName, cancellationToken);
+        });
+
         return new Command("hook", "Manage the native WebAuthn hook DLL in browser processes.")
         {
             attachCommand,
             detachCommand,
-            listCommand
+            listCommand,
+            waitCommand
         };
+    }
+
+    /// <summary>
+    /// Creates the requested hook named pipe and processes one hook message per connection
+    /// until a matching completed assertion, matching assertion error, or the configured timeout is received.
+    /// </summary>
+    /// <returns>0 if the requested hook action completed; 1 on timeout, cancellation, or matching assertion error.</returns>
+    private static async Task<int> WaitForHookResponsesAsync(
+        ILogger logger,
+        string? rpId,
+        string? challenge,
+        bool crossSession,
+        bool monitor,
+        string pipeName,
+        CancellationToken cancellationToken)
+    {
+        PipeSecurity security = CreateAuthenticatedUsersPipeSecurity();
+        TimeSpan? timeout = !string.IsNullOrWhiteSpace(challenge)
+            ? DefaultChallengeWaitTimeout
+            : null;
+
+        logger.LogInformation(
+            "Listening on \\\\.\\pipe\\{Name} for hook assertion responses (timeout: {Timeout})...",
+            pipeName,
+            timeout.HasValue ? $"{timeout.Value.TotalSeconds:0}s" : "none");
+
+        DateTime? deadline = timeout.HasValue
+            ? DateTime.UtcNow + timeout.Value
+            : null;
+
+        int? returnValue = null;
+
+        while (!returnValue.HasValue)
+        {
+            TimeSpan? remaining = deadline.HasValue
+                ? deadline.Value - DateTime.UtcNow
+                : null;
+            if (remaining <= TimeSpan.Zero)
+            {
+                break;
+            }
+
+            bool pipeCreated = false;
+            string pipeOperation = "creating named pipe";
+            try
+            {
+                using NamedPipeServerStream pipe = CreateHookPipeServer(pipeName, security);
+                pipeCreated = true;
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                if (remaining.HasValue)
+                {
+                    cts.CancelAfter(remaining.Value);
+                }
+
+                pipeOperation = "waiting for connection";
+                await pipe.WaitForConnectionAsync(cts.Token);
+
+                pipeOperation = "processing message";
+                returnValue = await ProcessPipeMessageAsync(
+                    pipe,
+                    logger,
+                    rpId,
+                    challenge,
+                    crossSession,
+                    monitor,
+                    cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (IOException ex)
+            {
+                if (!pipeCreated)
+                {
+                    logger.LogError("Failed to create named pipe \\\\.\\pipe\\{Name}: {Message}", pipeName, ex.Message);
+                    return 1;
+                }
+
+                logger.LogError("Pipe error while {Operation}: {Message}", pipeOperation, ex.Message);
+            }
+        }
+
+        if (!returnValue.HasValue)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                logger.LogInformation("Stopped listening after cancellation.");
+                return 1;
+            }
+
+            logger.LogWarning("Timeout expired before a matching hook response was received.");
+            return 1;
+        }
+
+        // Pass-through the return value
+        return returnValue.Value;
+    }
+
+    /// <summary>
+    /// Reads and dispatches one hook message.
+    /// Returns how the wait loop should proceed after handling the message.
+    /// </summary>
+    private static async Task<int?> ProcessPipeMessageAsync(
+        NamedPipeServerStream pipe,
+        ILogger logger,
+        string? rpId,
+        string? challenge,
+        bool crossSession,
+        bool monitor,
+        CancellationToken cancellationToken)
+    {
+        HookPipeMessage? message = await ReadPipeMessageAsync(pipe, logger, cancellationToken);
+        if (message is null)
+        {
+            return null;
+        }
+
+        switch (message)
+        {
+            case AssertionStartedMessage startedMsg:
+                logger.LogInformation(
+                    "Assertion ceremony started: rpId={RpId} previousAction={PreviousAction} process={Process} (pid {Pid}) user={User} at {Timestamp}.",
+                    startedMsg.RpId ?? "(null)",
+                    startedMsg.PreviousAction?.ToString() ?? "(none)",
+                    startedMsg.ProcessName ?? "(null)",
+                    startedMsg.Pid,
+                    startedMsg.UserName ?? "(null)",
+                    startedMsg.Timestamp.ToLocalTime());
+
+                HookActionMessage actionMessage = BuildHookActionMessage(rpId, challenge, crossSession, monitor, startedMsg);
+                await WritePipeActionMessageAsync(pipe, actionMessage, logger, cancellationToken);
+
+                if (actionMessage.Action == HookAction.Wait)
+                {
+                    // Exit the CLI app
+                    logger.LogInformation("The authentication flow has been paused for 60s. Re-run the command with the --challenge parameter.");
+                    return 0;
+                }
+
+                break;
+            case AssertionCompletedMessage completedMsg:
+                logger.LogInformation(
+                    "Assertion ceremony completed: rpId={RpId} previousAction={PreviousAction} process={Process} (pid {Pid}) user={User} at {Timestamp}.",
+                    completedMsg.RpId ?? "(null)",
+                    completedMsg.PreviousAction?.ToString() ?? "(none)",
+                    completedMsg.ProcessName ?? "(null)",
+                    completedMsg.Pid,
+                    completedMsg.UserName ?? "(null)",
+                    completedMsg.Timestamp.ToLocalTime());
+                Console.WriteLine(completedMsg.Payload.GetRawText());
+
+                if (RpIdsMatch(rpId, message.RpId))
+                {
+                    // Exit the CLI app
+                    logger.LogInformation("Stopping the listener after the requested hook flow completed.");
+                    return 0;
+                }
+
+                break;
+            case AssertionErrorMessage errorMsg:
+                logger.LogWarning(
+                    "Hook reported assertion error {HResultMessage} for rpId={RpId} previousAction={PreviousAction} user={User} at {Timestamp}.",
+                    Marshal.GetExceptionForHR(unchecked((int)errorMsg.HResult))?.Message
+                        ?? $"HRESULT 0x{errorMsg.HResult:X8}",
+                    errorMsg.RpId ?? "(null)",
+                    errorMsg.PreviousAction?.ToString() ?? "(none)",
+                    errorMsg.UserName ?? "(null)",
+                    errorMsg.Timestamp.ToLocalTime());
+
+                if (RpIdsMatch(rpId, message.RpId))
+                {
+                    // Exit the CLI app
+                    logger.LogInformation("Stopping the listener after receiving a matching hook error.");
+                    return 1;
+                }
+
+                break;
+            default:
+                logger.LogWarning("Unrecognized pipe message type: {Type}; ignoring.", message?.GetType().Name);
+                break;
+        }
+
+        // Continue by default
+        return null;
+    }
+
+    private static HookActionMessage BuildHookActionMessage(
+        string? rpId,
+        string? challenge,
+        bool crossSession,
+        bool monitor,
+        AssertionStartedMessage startedMsg)
+    {
+        if (monitor)
+        {
+            // Never interrupt the authentication process in monitor mode
+            return new HookActionMessage { Action = HookAction.Continue };
+        }
+
+        if (!string.IsNullOrWhiteSpace(rpId) && !RpIdsMatch(rpId, startedMsg.RpId))
+        {
+            // RP ID does not match, so just continue
+            return new HookActionMessage { Action = HookAction.Continue };
+        }
+
+        if (crossSession)
+        {
+            // Capture the assertion with the original challenge
+            return new HookActionMessage { Action = HookAction.Capture };
+        }
+
+        if (!string.IsNullOrWhiteSpace(challenge))
+        {
+            // Inject the operator-provided challenge to the flow
+            return new HookActionMessage { Action = HookAction.Inject, Challenge = challenge };
+        }
+
+        // Wait for a challenge to be provided by the operator.
+        return new HookActionMessage { Action = HookAction.Wait };
+    }
+
+    private static async Task WritePipeActionMessageAsync(
+        NamedPipeServerStream pipe,
+        HookActionMessage actionMessage,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        logger.LogInformation("Sending hook action {Action} to pipe client.", actionMessage.Action);
+        byte[] message = JsonSerializer.SerializeToUtf8Bytes(actionMessage, HookPipeMessageJsonContext.Default.HookActionMessage);
+        await pipe.WriteAsync(message, 0, message.Length, cancellationToken);
+        await pipe.FlushAsync(cancellationToken);
+    }
+
+    private static bool RpIdsMatch(string? expected, string? actual)
+        => !string.IsNullOrWhiteSpace(expected)
+            && !string.IsNullOrWhiteSpace(actual)
+            && string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Reads one complete pipe message from <paramref name="pipe"/> operating in
+    /// <see cref="PipeTransmissionMode.Message"/> mode. Accumulates chunks until
+    /// <see cref="PipeStream.IsMessageComplete"/> is <c>true</c>.
+    /// </summary>
+    /// <returns>The decoded hook pipe message, or <c>null</c> when the pipe is closed or sends invalid JSON.</returns>
+    private static async Task<HookPipeMessage?> ReadPipeMessageAsync(
+        NamedPipeServerStream pipe,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        MemoryStream accumulated = new();
+        byte[] chunk = new byte[HookPipeInputBufferSize];
+
+        do
+        {
+            int read = await pipe.ReadAsync(chunk, 0, chunk.Length, cancellationToken);
+            if (read == 0)
+            {
+                logger.LogWarning("Pipe connection closed without receiving any message.");
+                return null;
+            }
+
+            accumulated.Write(chunk, 0, read);
+        }
+        while (!pipe.IsMessageComplete);
+
+        string messageJson = Encoding.UTF8.GetString(accumulated.ToArray());
+        try
+        {
+            HookPipeMessage? message = JsonSerializer.Deserialize(
+                messageJson,
+                HookPipeMessageJsonContext.Default.HookPipeMessage);
+            if (message is null)
+            {
+                logger.LogWarning("Hook pipe message did not contain a message object.");
+            }
+
+            return message;
+        }
+        catch (JsonException ex)
+        {
+            logger.LogWarning("Failed to parse hook pipe message: {Error}", ex.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Builds a <see cref="PipeSecurity"/> descriptor that grants the built-in
+    /// <em>Authenticated Users</em> group write access so that the hook DLL,
+    /// running under any interactively logged-in account, can connect and deliver responses.
+    /// </summary>
+    private static PipeSecurity CreateAuthenticatedUsersPipeSecurity()
+    {
+        var security = new PipeSecurity();
+        security.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier(WellKnownSidType.NetworkSid, null),
+            PipeAccessRights.FullControl,
+            AccessControlType.Deny));
+        security.AddAccessRule(new PipeAccessRule(
+            new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null),
+            PipeAccessRights.ReadWrite,
+            AccessControlType.Allow));
+        return security;
     }
 
     /// <summary>
@@ -111,45 +525,29 @@ internal static class HookCommand
     /// <returns>0 if every targeted process was injected (or already hooked); 1 on any failure.</returns>
     private static int Attach(int? pid, string? processName, string? dllPath, ILogger logger)
     {
-        if (pid.HasValue && !string.IsNullOrWhiteSpace(processName))
-        {
-            logger.LogError("Specify either --pid or --process-name, not both.");
-            return 1;
-        }
-
-        var targets = ResolveTargets(pid, processName, requireWebAuthn: true, logger);
+        var targets = ResolveTargets(logger, pid, processName is not null ? [processName] : null, filterWebAuthn: true);
         if (targets.Count == 0)
         {
             return 1;
         }
 
-        try
+        int failures = 0;
+        foreach (var process in targets)
         {
-            int failures = 0;
-            foreach (var process in targets)
+            var resolvedDll = ResolveHookDllPath(process.Pid, dllPath, logger);
+            if (resolvedDll is null)
             {
-                var resolvedDll = ResolveHookDllPath(process, dllPath, logger);
-                if (resolvedDll is null)
-                {
-                    failures++;
-                    continue;
-                }
-
-                if (!InjectIntoProcess(process, resolvedDll, logger))
-                {
-                    failures++;
-                }
+                failures++;
+                continue;
             }
 
-            return failures == 0 ? 0 : 1;
-        }
-        finally
-        {
-            foreach (var process in targets)
+            if (!InjectIntoProcess(process.Pid, resolvedDll, logger))
             {
-                process.Dispose();
+                failures++;
             }
         }
+
+        return failures == 0 ? 0 : 1;
     }
 
     /// <summary>
@@ -158,38 +556,22 @@ internal static class HookCommand
     /// <returns>0 if every targeted process was unloaded (or was not hooked); 1 on any failure.</returns>
     private static int Detach(int? pid, string? processName, ILogger logger)
     {
-        if (pid.HasValue && !string.IsNullOrWhiteSpace(processName))
-        {
-            logger.LogError("Specify either --pid or --process-name, not both.");
-            return 1;
-        }
-
-        var targets = ResolveTargets(pid, processName, requireWebAuthn: false, logger);
+        var targets = ResolveTargets(logger, pid, processName is not null ? [processName] : null, filterWebAuthn: false);
         if (targets.Count == 0)
         {
             return 1;
         }
 
-        try
+        int failures = 0;
+        foreach (var process in targets)
         {
-            int failures = 0;
-            foreach (var process in targets)
+            if (!UnloadFromProcess(process.Pid, logger))
             {
-                if (!UnloadFromProcess(process, logger))
-                {
-                    failures++;
-                }
+                failures++;
             }
+        }
 
-            return failures == 0 ? 0 : 1;
-        }
-        finally
-        {
-            foreach (var process in targets)
-            {
-                process.Dispose();
-            }
-        }
+        return failures == 0 ? 0 : 1;
     }
 
     /// <summary>
@@ -200,63 +582,11 @@ internal static class HookCommand
     private static int ListBrowsers(ILogger logger)
     {
         logger.LogInformation("Enumerating browser processes...");
-
-        var rows = new List<BrowserProcessInfo>();
-
-        // Chromium-based browsers spawn many helper/renderer/GPU children under the same image name.
-        // Listing every one clutters the output, so per-browser we pick the most useful slice:
-        //   1. Any process that owns a visible top-level window (the "main" UX process).
-        //   2. Else any process that has already loaded webauthn.dll (seen a passkey operation).
-        //   3. Else every instance, so at least something is reported.
-        foreach (var browserName in BrowserProcessNames)
-        {
-            Process[] processes = Process.GetProcessesByName(browserName);
-            try
-            {
-                // Snapshot the window / webauthn / hook state for each process in one pass so the
-                // selection logic below can reference the same values without re-querying.
-                var candidates = new List<BrowserProcessInfo>(processes.Length);
-                foreach (Process process in processes)
-                {
-                    candidates.Add(new BrowserProcessInfo(
-                        process.Id,
-                        process.ProcessName,
-                        HasMainWindow(process),
-                        HasModuleLoaded(process, WebAuthnModuleName),
-                        TryGetHookModule(process, out _)));
-                }
-
-                // Narrow to the first tier that has any hits; fall through to "show everything" only
-                // when both window-owning and webauthn-loaded subsets are empty.
-                IEnumerable<BrowserProcessInfo> selected;
-                if (candidates.Any(c => c.HasMainWindow))
-                {
-                    selected = candidates.Where(c => c.HasMainWindow);
-                }
-                else if (candidates.Any(c => c.HasWebAuthn))
-                {
-                    selected = candidates.Where(c => c.HasWebAuthn);
-                }
-                else
-                {
-                    selected = candidates;
-                }
-
-                rows.AddRange(selected);
-            }
-            finally
-            {
-                // Dispose every Process — both the ones we rendered and the ones filtered out.
-                foreach (Process process in processes)
-                {
-                    process.Dispose();
-                }
-            }
-        }
+        var rows = ResolveTargets(logger, processNames: BrowserProcessNames, filterWebAuthn: true);
 
         if (rows.Count == 0)
         {
-            logger.LogWarning("No browser processes were found.");
+            // ResolveTargets has already logged the reason for zero results (e.g., no matching processes, or invalid arguments), so just return.
             return 0;
         }
 
@@ -283,138 +613,169 @@ internal static class HookCommand
     }
 
     /// <summary>
-    /// Expands the user's <c>--pid</c> / <c>--process-name</c> selection into a list of live <see cref="Process"/> handles,
-    /// optionally filtered to processes that currently have <c>webauthn.dll</c> loaded.
+    /// Expands the user's <c>--pid</c> / <c>--process-name</c> selection into a list of live <see cref="Process"/> handles.
     /// </summary>
-    /// <param name="requireWebAuthn">When <c>true</c>, drops processes that have not yet loaded <c>webauthn.dll</c>.</param>
     /// <returns>An empty list when no matching process is found; callers are responsible for disposing each returned process.</returns>
-    private static List<Process> ResolveTargets(int? pid, string? processName, bool requireWebAuthn, ILogger logger)
+    private static List<BrowserProcessInfo> ResolveTargets(ILogger logger, int? pid = null, string[]? processNames = null, bool filterWebAuthn = true)
     {
         if (pid.HasValue)
         {
+            if (processNames is not null)
+            {
+                logger.LogError("Specify either --pid or --process-name, not both.");
+                return [];
+            }
+
             try
             {
-                return new List<Process> { Process.GetProcessById(pid.Value) };
+                using var process = Process.GetProcessById(pid.Value);
+                return [BrowserProcessInfo.Create(process)];
             }
             catch (ArgumentException)
             {
                 logger.LogError("A process with pid {Pid} was not found.", pid.Value);
-                return new List<Process>();
+                return [];
             }
         }
-
-        IEnumerable<string> candidateNames = string.IsNullOrWhiteSpace(processName)
-            ? BrowserProcessNames
-            : new[] { NormalizeProcessName(processName!) };
-
-        var results = new List<Process>();
-        foreach (var name in candidateNames)
+        else
         {
-            foreach (var process in Process.GetProcessesByName(name))
+            processNames ??= BrowserProcessNames;
+
+            // Process.GetProcessesByName expects names without the .exe suffix, so strip it if present.
+            IEnumerable<string> candidateNames = processNames.Select(name => NormalizeProcessName(name));
+            List<BrowserProcessInfo> results = [];
+
+            foreach (string name in candidateNames)
             {
-                if (requireWebAuthn && !HasModuleLoaded(process, WebAuthnModuleName))
+                // Modern browsers spawn many helper/renderer/GPU children under the same image name.
+                // Listing every one clutters the output, so per-browser we pick the most useful slice:
+                //   1. Any process that owns a visible top-level window (the "main" UX process).
+                //   2. Else any process that has already loaded webauthn.dll (seen a passkey operation).
+                //   3. Else every instance, so at least something is reported.
+                Process[] processes = Process.GetProcessesByName(name);
+                try
                 {
-                    process.Dispose();
-                    continue;
+                    // Snapshot the window / webauthn / hook state for each process in one pass so the
+                    // selection logic below can reference the same values without re-querying.
+                    List<BrowserProcessInfo> candidates = processes.Select(process => BrowserProcessInfo.Create(process)).ToList();
+
+                    // Narrow to the first tier that has any hits; fall through to "show everything" only
+                    // when both window-owning and webauthn-loaded subsets are empty.
+                    if (candidates.Any(c => c.HasMainWindow))
+                    {
+                        results.AddRange(candidates.Where(c => c.HasMainWindow));
+                    }
+                    else if (candidates.Any(c => c.HasWebAuthn) && filterWebAuthn)
+                    {
+                        results.AddRange(candidates.Where(c => c.HasWebAuthn));
+                    }
+                    else
+                    {
+                        results.AddRange(candidates);
+                    }
                 }
-
-                results.Add(process);
+                finally
+                {
+                    // Dispose every Process — both the ones we rendered and the ones filtered out.
+                    foreach (Process process in processes)
+                    {
+                        process.Dispose();
+                    }
+                }
             }
-        }
 
-        if (results.Count == 0)
-        {
-            if (requireWebAuthn)
+            if (results.Count == 0)
             {
-                logger.LogError("No browser process with {Module} loaded was found.", WebAuthnModuleName);
+                logger.LogWarning("No matching browser processes were found.");
             }
-            else
-            {
-                logger.LogError("No matching browser process was found.");
-            }
-        }
 
-        return results;
+            return results;
+        }
     }
 
     /// <summary>
     /// Writes the hook DLL path into the target's address space and calls <c>LoadLibraryW</c> on it via a remote thread.
     /// </summary>
     /// <returns><c>true</c> when the hook is loaded (or was already loaded); <c>false</c> if any Win32 call failed.</returns>
-    private static unsafe bool InjectIntoProcess(Process process, string dllPath, ILogger logger)
+    private static unsafe bool InjectIntoProcess(int pid, string dllPath, ILogger logger)
     {
-        if (TryGetHookModule(process, out _))
-        {
-            logger.LogInformation("Skipping {Name} (pid {Pid}): hook is already loaded.", process.ProcessName, process.Id);
-            return true;
-        }
-
-        var processHandle = PInvoke.OpenProcess(
-            PROCESS_ACCESS_RIGHTS.PROCESS_CREATE_THREAD
-            | PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_INFORMATION
-            | PROCESS_ACCESS_RIGHTS.PROCESS_VM_OPERATION
-            | PROCESS_ACCESS_RIGHTS.PROCESS_VM_WRITE
-            | PROCESS_ACCESS_RIGHTS.PROCESS_VM_READ,
-            false,
-            (uint)process.Id);
-
-        if (processHandle.IsNull)
-        {
-            LogLastPInvokeError(logger, "OpenProcess", process.Id);
-            return false;
-        }
-
         try
         {
-            var dllPathBytes = Encoding.Unicode.GetBytes(dllPath + '\0');
-            fixed (byte* dllPathBytesPtr = dllPathBytes)
+            using var process = Process.GetProcessById(pid);
+            string processName = process.ProcessName;
+
+            if (TryGetHookModule(process, out _))
             {
-                var remoteBuffer = PInvoke.VirtualAllocEx(
-                    processHandle,
-                    null,
-                    (nuint)dllPathBytes.Length,
-                    VIRTUAL_ALLOCATION_TYPE.MEM_COMMIT | VIRTUAL_ALLOCATION_TYPE.MEM_RESERVE,
-                    PAGE_PROTECTION_FLAGS.PAGE_READWRITE);
-
-                if (remoteBuffer is null)
-                {
-                    LogLastPInvokeError(logger, "VirtualAllocEx", process.Id);
-                    return false;
-                }
-
-                try
-                {
-                    if (!PInvoke.WriteProcessMemory(processHandle, remoteBuffer, dllPathBytesPtr, (nuint)dllPathBytes.Length, null))
-                    {
-                        LogLastPInvokeError(logger, "WriteProcessMemory", process.Id);
-                        return false;
-                    }
-
-                    if (!TryRunRemoteThread(
-                        processHandle,
-                        GetKernel32ExportAddress("LoadLibraryW"),
-                        remoteBuffer,
-                        "LoadLibraryW",
-                        process.Id,
-                        logger,
-                        out _))
-                    {
-                        return false;
-                    }
-                }
-                finally
-                {
-                    PInvoke.VirtualFreeEx(processHandle, remoteBuffer, 0, VIRTUAL_FREE_TYPE.MEM_RELEASE);
-                }
+                logger.LogInformation("Skipping {Name} (pid {Pid}): hook is already loaded.", processName, pid);
+                return true;
             }
-        }
-        finally
-        {
-            PInvoke.CloseHandle(processHandle);
-        }
 
-        logger.LogInformation("Injected {Dll} into {Name} (pid {Pid}).", Path.GetFileName(dllPath), process.ProcessName, process.Id);
-        return true;
+            using var processHandle = SafeProcessHandle.OpenProcess(
+                PROCESS_ACCESS_RIGHTS.PROCESS_CREATE_THREAD
+                | PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_INFORMATION
+                | PROCESS_ACCESS_RIGHTS.PROCESS_VM_OPERATION
+                | PROCESS_ACCESS_RIGHTS.PROCESS_VM_WRITE
+                | PROCESS_ACCESS_RIGHTS.PROCESS_VM_READ,
+                false,
+                pid);
+
+            if (processHandle.IsInvalid)
+            {
+                PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.OpenProcess), pid);
+                return false;
+            }
+
+            var dllPathBytes = Encoding.Unicode.GetBytes(dllPath + '\0');
+            using var remoteBuffer = RemoteAllocationSafeHandle.Allocate(processHandle, (nuint)dllPathBytes.Length);
+            if (remoteBuffer.IsInvalid)
+            {
+                PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.VirtualAllocEx), pid);
+                return false;
+            }
+
+            if (!processHandle.WriteProcessMemory(remoteBuffer, dllPathBytes))
+            {
+                PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.WriteProcessMemory), pid);
+                return false;
+            }
+
+            var loadLibraryAddress = GetKernel32ExportAddress(LoadLibraryWExport);
+            if (loadLibraryAddress == IntPtr.Zero)
+            {
+                PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.GetProcAddress), pid);
+                return false;
+            }
+
+            if (!processHandle.TryRunRemoteThread(
+                loadLibraryAddress,
+                remoteBuffer,
+                LoadLibraryWExport,
+                pid,
+                logger,
+                out uint loadResult))
+            {
+                return false;
+            }
+
+            if (loadResult == 0)
+            {
+                logger.LogError("Remote LoadLibraryW returned null for pid {Pid}.", pid);
+                return false;
+            }
+
+            logger.LogInformation("Injected {Dll} into {Name} (pid {Pid}).", Path.GetFileName(dllPath), processName, pid);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            logger.LogWarning("Cannot inject into pid {Pid}: the process exited before it could be opened.", pid);
+            return false;
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning("Cannot inject into pid {Pid}: {Message}", pid, ex.Message);
+            return false;
+        }
     }
 
     /// <summary>
@@ -422,117 +783,113 @@ internal static class HookCommand
     /// giving up after <see cref="MaxUnloadAttempts"/> attempts.
     /// </summary>
     /// <returns><c>true</c> when the module is fully unloaded (or was not loaded); <c>false</c> if a call failed or the count never reached zero.</returns>
-    private static unsafe bool UnloadFromProcess(Process process, ILogger logger)
+    private static unsafe bool UnloadFromProcess(int pid, ILogger logger)
     {
-        if (!TryGetHookModule(process, out var hookModule))
-        {
-            logger.LogInformation("Skipping {Name} (pid {Pid}): hook is not loaded.", process.ProcessName, process.Id);
-            return true;
-        }
-
-        var processHandle = PInvoke.OpenProcess(
-            PROCESS_ACCESS_RIGHTS.PROCESS_CREATE_THREAD
-            | PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_INFORMATION
-            | PROCESS_ACCESS_RIGHTS.PROCESS_VM_OPERATION
-            | PROCESS_ACCESS_RIGHTS.PROCESS_VM_READ,
-            false,
-            (uint)process.Id);
-
-        if (processHandle.IsNull)
-        {
-            LogLastPInvokeError(logger, "OpenProcess", process.Id);
-            return false;
-        }
-
         try
         {
+            using var process = Process.GetProcessById(pid);
+            string processName = process.ProcessName;
+
+            if (!TryGetHookModule(process, out var hookModule))
+            {
+                logger.LogInformation("Skipping {Name} (pid {Pid}): hook is not loaded.", processName, pid);
+                return true;
+            }
+
+            using var processHandle = SafeProcessHandle.OpenProcess(
+                PROCESS_ACCESS_RIGHTS.PROCESS_CREATE_THREAD
+                | PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_INFORMATION
+                | PROCESS_ACCESS_RIGHTS.PROCESS_VM_OPERATION
+                | PROCESS_ACCESS_RIGHTS.PROCESS_VM_READ,
+                false,
+                pid);
+
+            if (processHandle.IsInvalid)
+            {
+                PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.OpenProcess), pid);
+                return false;
+            }
+
+            // Resolve FreeLibrary once rather than on every loop iteration.
+            var freeLibraryAddress = GetKernel32ExportAddress(FreeLibraryExport);
+            if (freeLibraryAddress == IntPtr.Zero)
+            {
+                PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.GetProcAddress), pid);
+                return false;
+            }
+
             // Attach installs two detours (the assertion hook and optionally the LoadLibrary bootstraps),
             // so each FreeLibrary call only decrements one reference. Retry until the module is fully gone.
             for (int attempt = 0; attempt < MaxUnloadAttempts; attempt++)
             {
-                if (!TryGetHookModule(process, out hookModule))
-                {
-                    logger.LogInformation("Unloaded hook from {Name} (pid {Pid}).", process.ProcessName, process.Id);
-                    return true;
-                }
-
-                if (!TryRunRemoteThread(
-                    processHandle,
-                    GetKernel32ExportAddress("FreeLibrary"),
-                    (void*)hookModule!.BaseAddress,
-                    "FreeLibrary",
-                    process.Id,
+                if (!processHandle.TryRunRemoteThread(
+                    freeLibraryAddress,
+                    hookModule,
+                    FreeLibraryExport,
+                    pid,
                     logger,
-                    out _))
+                    out uint freeLibraryResult))
                 {
                     return false;
                 }
-            }
-        }
-        finally
-        {
-            PInvoke.CloseHandle(processHandle);
-        }
 
-        logger.LogError("Unable to fully unload the hook from {Name} (pid {Pid}).", process.ProcessName, process.Id);
-        return false;
+                if (freeLibraryResult == 0)
+                {
+                    logger.LogError("Remote FreeLibrary returned false for {Name} ({Pid}).", processName, pid);
+                    return false;
+                }
+
+                process.Refresh();
+                if (!TryGetHookModule(process, out hookModule))
+                {
+                    logger.LogInformation("Unloaded hook from {Name} (pid {Pid}).", processName, pid);
+                    return true;
+                }
+            }
+
+            logger.LogError("Unable to fully unload the hook from {Name} (pid {Pid}).", processName, pid);
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            logger.LogWarning("Cannot unload hook from pid {Pid}: the process exited before it could be opened.", pid);
+            return false;
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning("Cannot unload hook from pid {Pid}: {Message}", pid, ex.Message);
+            return false;
+        }
     }
 
     /// <summary>
-    /// Runs <paramref name="startAddress"/> as a remote thread inside the target process, waits for it to exit,
-    /// and reports the 32-bit return value. A zero return is treated as failure because <c>LoadLibraryW</c> and
-    /// <c>FreeLibrary</c> both return zero on error.
+    /// Creates a new <see cref="NamedPipeServerStream"/> for the requested WebAuthn hook pipe.
     /// </summary>
-    private static unsafe bool TryRunRemoteThread(
-        HANDLE processHandle,
-        IntPtr startAddress,
-        void* parameter,
-        string routineName,
-        int pid,
-        ILogger logger,
-        out uint exitCode)
-    {
-        exitCode = 0;
-        using var processSafeHandle = new SafeFileHandle((IntPtr)processHandle.Value, ownsHandle: false);
-        var startRoutine = Marshal.GetDelegateForFunctionPointer<LPTHREAD_START_ROUTINE>(startAddress);
+    private static NamedPipeServerStream CreateHookPipeServer(string pipeName, PipeSecurity security)
+        => new(
+            pipeName,
+            PipeDirection.InOut,
+            maxNumberOfServerInstances: NamedPipeServerStream.MaxAllowedServerInstances,
+            PipeTransmissionMode.Message,
+            PipeOptions.Asynchronous,
+            inBufferSize: HookPipeInputBufferSize,
+            outBufferSize: HookPipeOutputBufferSize,
+            security);
 
-        using var threadHandle = PInvoke.CreateRemoteThread(
-            processSafeHandle,
-            null,
-            0,
-            startRoutine,
-            parameter,
-            0,
-            out _);
-
-        if (threadHandle.IsInvalid)
-        {
-            LogLastPInvokeError(logger, "CreateRemoteThread", pid);
-            return false;
-        }
-
-        PInvoke.WaitForSingleObject(threadHandle, PInvoke.INFINITE);
-        if (!PInvoke.GetExitCodeThread(threadHandle, out exitCode))
-        {
-            LogLastPInvokeError(logger, "GetExitCodeThread", pid);
-            return false;
-        }
-
-        if (exitCode == 0)
-        {
-            logger.LogError("Remote {Routine} returned 0 for pid {Pid}.", routineName, pid);
-            return false;
-        }
-
-        return true;
-    }
+    /// <summary>
+    /// Accepts either a bare pipe name or a local <c>\\.\pipe\name</c> path and returns the bare name.
+    /// </summary>
+    private static string NormalizeLocalPipeName(string pipeName)
+        => pipeName.StartsWith(LocalNamedPipePrefix, StringComparison.OrdinalIgnoreCase)
+            ? pipeName[LocalNamedPipePrefix.Length..]
+            : pipeName;
 
     /// <summary>
     /// Resolves the full path to the hook DLL matching the target process's architecture,
     /// using <paramref name="explicitPath"/> when provided, otherwise falling back to a co-located <c>WebAuthnHook_{arch}.dll</c>.
     /// </summary>
     /// <returns>The resolved DLL path, or <c>null</c> when no matching DLL can be located.</returns>
-    private static string? ResolveHookDllPath(Process process, string? explicitPath, ILogger logger)
+    private static string? ResolveHookDllPath(int pid, string? explicitPath, ILogger logger)
     {
         if (!string.IsNullOrWhiteSpace(explicitPath))
         {
@@ -546,7 +903,7 @@ internal static class HookCommand
             return null;
         }
 
-        var arch = DetectProcessArchitecture(process);
+        var arch = DetectProcessArchitecture(pid, logger);
         var dllName = arch switch
         {
             Architecture.X64 => HookModulePrefix + "x64.dll",
@@ -557,7 +914,7 @@ internal static class HookCommand
 
         if (dllName is null)
         {
-            logger.LogError("Unsupported or undetectable architecture for pid {Pid}.", process.Id);
+            logger.LogError("Unsupported or undetectable architecture for pid {Pid}.", pid);
             return null;
         }
 
@@ -577,41 +934,36 @@ internal static class HookCommand
     /// accounting for WoW64 (x86-on-x64) and WoW64-style x64-on-ARM64 emulation.
     /// </summary>
     /// <returns>The detected <see cref="Architecture"/>, or <c>null</c> if the value cannot be obtained or mapped.</returns>
-    private static unsafe Architecture? DetectProcessArchitecture(Process process)
+    private static unsafe Architecture? DetectProcessArchitecture(int pid, ILogger logger)
     {
-        var handle = PInvoke.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)process.Id);
-        if (handle.IsNull)
+        using var handle = SafeProcessHandle.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (handle.IsInvalid)
         {
+            PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.OpenProcess), pid);
             return null;
         }
 
-        try
+        IMAGE_FILE_MACHINE processMachine;
+        IMAGE_FILE_MACHINE nativeMachine;
+        if (!handle.IsWow64Process(out processMachine, out nativeMachine))
         {
-            IMAGE_FILE_MACHINE processMachine;
-            IMAGE_FILE_MACHINE nativeMachine;
-            if (!PInvoke.IsWow64Process2(handle, &processMachine, &nativeMachine))
-            {
-                return null;
-            }
-
-            // IMAGE_FILE_MACHINE_UNKNOWN in processMachine means the target is running natively,
-            // so the process architecture equals the host's native architecture.
-            var machine = processMachine == IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_UNKNOWN
-                ? nativeMachine
-                : processMachine;
-
-            return machine switch
-            {
-                IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_I386 => Architecture.X86,
-                IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_AMD64 => Architecture.X64,
-                IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_ARM64 => Architecture.Arm64,
-                _ => (Architecture?)null
-            };
+            PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.IsWow64Process2), pid);
+            return null;
         }
-        finally
+
+        // IMAGE_FILE_MACHINE_UNKNOWN in processMachine means the target is running natively,
+        // so the process architecture equals the host's native architecture.
+        var machine = processMachine == IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_UNKNOWN
+            ? nativeMachine
+            : processMachine;
+
+        return machine switch
         {
-            PInvoke.CloseHandle(handle);
-        }
+            IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_I386 => Architecture.X86,
+            IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_AMD64 => Architecture.X64,
+            IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_ARM64 => Architecture.Arm64,
+            _ => (Architecture?)null
+        };
     }
 
     /// <summary>
@@ -669,7 +1021,7 @@ internal static class HookCommand
     /// so detach works regardless of which architecture variant was injected.
     /// </summary>
     /// <returns><c>true</c> and the matching module when found; otherwise <c>false</c>.</returns>
-    private static bool TryGetHookModule(Process process, out ProcessModule? hookModule)
+    private static bool TryGetHookModule(Process process, [NotNullWhen(true)] out ProcessModule? hookModule)
     {
         hookModule = null;
 
@@ -693,20 +1045,6 @@ internal static class HookCommand
         }
 
         return false;
-    }
-
-    /// <summary>
-    /// Logs the most recent Win32 error (retrieved via <see cref="Marshal.GetLastWin32Error"/>) together with its system message.
-    /// </summary>
-    private static void LogLastPInvokeError(ILogger logger, string operation, int pid)
-    {
-        int error = Marshal.GetLastWin32Error();
-        logger.LogError(
-            "{Operation} failed for pid {Pid} ({Code}: {Message}).",
-            operation,
-            pid,
-            error,
-            new Win32Exception(error).Message);
     }
 
     /// <summary>

@@ -33,6 +33,6 @@ public class Program
         };
 
         var config = new CommandLineConfiguration(rootCommand);
-        return config.Invoke(args);
+        return config.InvokeAsync(args).GetAwaiter().GetResult();
     }
 }

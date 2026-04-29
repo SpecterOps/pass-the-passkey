@@ -48,6 +48,7 @@ CodeCoverage/
 
 # MSBuild Binary and Structured Log
 *.binlog
+vcpkg_installed/
 
 # MSTest test Results
 [Tt]est[Rr]esult*/

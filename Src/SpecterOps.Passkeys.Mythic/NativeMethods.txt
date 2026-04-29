@@ -8,5 +8,6 @@ IsWow64Process2
 OpenProcess
 VirtualAllocEx
 VirtualFreeEx
+WAIT_EVENT
 WaitForSingleObject
 WriteProcessMemory

@@ -7,7 +7,6 @@
 
   <!-- Native WebAuthn API hook DLL -->
   <Project Path="Src/SpecterOps.Passkeys.WebAuthnHook/SpecterOps.Passkeys.WebAuthnHook.vcxproj" Id="99f0dd5e-e5b7-48ab-aa57-cb6153ba4cc9" />
-  <Project Path="Src/SpecterOps.Passkeys.WebAuthnHook/Detours.vcxitems" Id="3b4265a3-eb98-4064-929b-114912de560d" />
 
   <!-- Additional files -->
   <Folder Name="/Documentation/">
