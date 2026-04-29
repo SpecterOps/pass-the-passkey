@@ -5,7 +5,7 @@
 
 namespace SpecterOps::Passkeys::WebAuthnHook
 {
-    /// Detour entrypoint that logs the request before calling the original API.
+    /// Detour entrypoint that handles the request before calling the original API.
     HRESULT WINAPI HookWebAuthNAuthenticatorGetAssertion(
         HWND hwnd,
         LPCWSTR rpId,

@@ -1,5 +1,3 @@
-using System.Text.Json.Serialization;
-
 namespace SpecterOps.Passkeys.Mythic;
 
 /// <summary>
@@ -9,7 +7,4 @@ namespace SpecterOps.Passkeys.Mythic;
 /// </summary>
 internal sealed class AssertionStartedMessage : HookPipeMessage
 {
-    /// <summary>Relying party identifier from the WebAuthn assertion request.</summary>
-    [JsonPropertyName("rpId")]
-    public string? RpId { get; init; }
 }

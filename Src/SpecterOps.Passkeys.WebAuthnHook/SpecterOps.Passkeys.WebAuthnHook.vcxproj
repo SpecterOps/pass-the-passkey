@@ -47,6 +47,14 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <PropertyGroup>
+    <!-- Enable vcpkg manifest mode so dependencies come from this project's vcpkg.json. -->
+    <VcpkgEnableManifest>true</VcpkgEnableManifest>
+    <!-- Select static vcpkg triplets so third-party libraries are linked into the hook DLL instead of deployed as extra DLLs. -->
+    <VcpkgUseStatic>true</VcpkgUseStatic>
+    <!-- Match the project runtime library settings by using the static CRT variant of vcpkg's static triplets. -->
+    <VcpkgUseMD>false</VcpkgUseMD>
+  </PropertyGroup>
+  <PropertyGroup>
     <PreferredToolArchitecture>x64</PreferredToolArchitecture>
     <!-- Shared per-configuration output; each platform's DLL is disambiguated by the TargetName suffix below. -->
     <OutDir>$(MSBuildProjectDirectory)\..\..\Build\bin\SpecterOps.Passkeys.WebAuthnHook\$(Configuration)\</OutDir>
@@ -56,7 +64,6 @@
     <PlatformSuffix Condition="'$(Platform)'=='ARM64'">arm64</PlatformSuffix>
     <TargetName>WebAuthnHook_$(PlatformSuffix)</TargetName>
   </PropertyGroup>
-  <Import Project="Detours.vcxitems" Label="Shared" />
   <ItemDefinitionGroup>
     <ClCompile>
       <EnablePREfast>true</EnablePREfast>
@@ -87,13 +94,11 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="Logging.h" />
     <ClInclude Include="NamedPipe.h" />
     <ClInclude Include="WebAuthnHook.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DllMain.cpp" />
-    <ClCompile Include="Logging.cpp" />
     <ClCompile Include="NamedPipe.cpp" />
     <ClCompile Include="WebAuthnHook.cpp" />
   </ItemGroup>

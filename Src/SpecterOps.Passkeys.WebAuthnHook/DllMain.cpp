@@ -1,10 +1,9 @@
 #include "WebAuthnHook.h"
-#include "Logging.h"
-#include <detours.h>
-#include <string>
+#include <detours/detours.h>
 
 using namespace SpecterOps::Passkeys::WebAuthnHook;
 
+/// Initializes or detaches WebAuthn detours as the hook DLL is loaded or unloaded.
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved)
 {
     if (DetourIsHelperProcess())
@@ -22,11 +21,6 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved)
         // yet loaded — the common case under early injection.
         if (!AttachAssertionHook() && !AttachBootstrapHooks())
         {
-            AppendLog(
-                L"[" + Timestamp() + L"] " + GetCurrentProcessName()
-                + L" (pid " + std::to_wstring(::GetCurrentProcessId())
-                + L", user " + GetCurrentUserName()
-                + L") Failed to arm bootstrap Detours hooks.");
             return FALSE;
         }
 

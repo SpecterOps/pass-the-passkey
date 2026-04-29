@@ -9,6 +9,7 @@ namespace SpecterOps.Passkeys.Mythic;
 [JsonSerializable(typeof(AssertionStartedMessage))]
 [JsonSerializable(typeof(AssertionCompletedMessage))]
 [JsonSerializable(typeof(AssertionErrorMessage))]
+[JsonSerializable(typeof(HookActionMessage))]
 internal sealed partial class HookPipeMessageJsonContext : JsonSerializerContext
 {
 }
