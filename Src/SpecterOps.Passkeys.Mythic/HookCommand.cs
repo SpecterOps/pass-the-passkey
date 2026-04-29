@@ -357,12 +357,12 @@ internal static class HookCommand
                 break;
             case AssertionCompletedMessage completedMsg:
                 logger.LogInformation(
-                    "Assertion ceremony completed: rpId={RpId} previousAction={PreviousAction} process={Process} (pid {Pid}) user={User} at {Timestamp}.",
+                    "Assertion ceremony completed: rpId={RpId} process={Process} (pid {Pid}) user={User} previousAction={PreviousAction} at {Timestamp}.",
                     completedMsg.RpId ?? "(null)",
-                    completedMsg.PreviousAction?.ToString() ?? "(none)",
                     completedMsg.ProcessName ?? "(null)",
                     completedMsg.Pid,
                     completedMsg.UserName ?? "(null)",
+                    completedMsg.PreviousAction?.ToString() ?? "(none)",
                     completedMsg.Timestamp.ToLocalTime());
                 Console.WriteLine(completedMsg.Payload.GetRawText());
 

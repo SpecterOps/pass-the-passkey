@@ -34,6 +34,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
     {
         using Base64Url = cppcodec::base64_url_unpadded;
         using JsonWriter = rapidjson::Writer<rapidjson::StringBuffer>;
+        constexpr DWORD PipeConnectionRetryDelayMs = 500;
 
         /// Writes a JSON string value from a string view.
         void WriteString(JsonWriter& writer, const std::string_view value)
@@ -422,26 +423,51 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         }
 
         std::array<char, MaxPipeResponseBytes> response{};
-        DWORD bytesRead = 0;
+        const ULONGLONG startTick = ::GetTickCount64();
+        ULONGLONG elapsed = 0;
+        DWORD remainingTimeoutMs = timeoutMs;
+        DWORD error = ERROR_SUCCESS;
 
-        if (!::CallNamedPipeW(
+        do
+        {
+            DWORD bytesRead = 0;
+            if (::CallNamedPipeW(
                 WebAuthnHookPipeName,
                 const_cast<char*>(message.data()),
                 static_cast<DWORD>(message.size()),
                 response.data(),
                 static_cast<DWORD>(response.size()),
                 &bytesRead,
-                timeoutMs))
-        {
-            return std::nullopt;
-        }
+                remainingTimeoutMs))
+            {
+                if (bytesRead == 0)
+                {
+                    return std::nullopt;
+                }
 
-        if (bytesRead == 0)
-        {
-            return std::nullopt;
-        }
+                return std::string(response.data(), bytesRead);
+            }
 
-        return std::string(response.data(), bytesRead);
+            error = ::GetLastError();
+            if (error == ERROR_FILE_NOT_FOUND)
+            {
+                elapsed = ::GetTickCount64() - startTick;
+                remainingTimeoutMs = elapsed < timeoutMs
+                    ? static_cast<DWORD>(timeoutMs - elapsed)
+                    : 0;
+                const DWORD sleepMs = remainingTimeoutMs < PipeConnectionRetryDelayMs
+                    ? remainingTimeoutMs
+                    : PipeConnectionRetryDelayMs;
+
+                if (sleepMs > 0)
+                {
+                    ::Sleep(sleepMs);
+                }
+            }
+        }
+        while (error == ERROR_FILE_NOT_FOUND && remainingTimeoutMs > 0);
+
+        return std::nullopt;
     }
 
     /// Parses the requested hook action from a pipe response message.

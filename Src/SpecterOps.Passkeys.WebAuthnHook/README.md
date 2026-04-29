@@ -49,8 +49,8 @@ Pipe details:
 | Response timeout after `wait` | 60 seconds |
 | Server security | Denies `NETWORK LOGON`; allows `Authenticated Users` read/write |
 
-If the pipe server is not running, the hook continues the intercepted
-WebAuthn call using the original browser-supplied data.
+If no final action is received, including when the pipe server is not running or a `wait` response times out, the hook
+continues the intercepted WebAuthn call using the original browser-supplied data.
 
 ### Hook-to-Server Messages
 
@@ -130,7 +130,7 @@ The server replies to `AssertionStarted` with a `HookActionMessage`:
 | Continue | `{"action":"continue"}` | Call the original API with the browser-supplied request and return the real result to the browser. |
 | Capture | `{"action":"capture"}` | Call the original API unchanged, send the successful assertion to the pipe, and return `ERROR_TIMEOUT` to the browser. |
 | Inject | `{"action":"inject","challenge":"..."}` | Replace `clientDataJSON.challenge`, call the original API, send the successful assertion to the pipe, and return `ERROR_TIMEOUT` to the browser. |
-| Wait | `{"action":"wait"}` | Ask the hook to send another `AssertionStarted` message and wait longer for a final action. This allows the operator to inject their own challenge. |
+| Wait | `{"action":"wait"}` | Ask the hook to send another `AssertionStarted` message and wait longer for a final action. This allows the operator to inject their own challenge. If no final action arrives before the wait timeout, the hook continues the original browser-supplied request. |
 
 Following is a sample `inject` message:
 
@@ -177,7 +177,7 @@ stateDiagram-v2
     [*] --> Intercept
     Intercept --> StartedPipe: send AssertionStarted
 
-    StartedPipe --> ContinueAction: no pipe, unknown, or continue
+    StartedPipe --> ContinueAction: no final action, unknown, or continue
     StartedPipe --> CaptureAction: capture
     StartedPipe --> InjectAction: inject
     StartedPipe --> StartedPipe: wait

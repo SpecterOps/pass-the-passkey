@@ -40,7 +40,6 @@ jobs:
       uses: microsoft/setup-msbuild@v3
 
     - name: Setup vcpkg MSBuild Integration
-      shell: pwsh
       run: vcpkg integrate install
 
     - name: Build WebAuthn Hook x86
@@ -80,7 +79,9 @@ jobs:
       uses: actions/upload-artifact@v6
       with:
         name: SharpPasskeys_v${{ steps.versions.outputs.MYTHIC_VERSION }}
-        path: Build/bin/SpecterOps.Passkeys.Mythic/release/*
+        path: |
+          Build/bin/SpecterOps.Passkeys.Mythic/release/SharpPasskeys.exe
+          Build/bin/SpecterOps.Passkeys.Mythic/release/WebAuthnHook_*.dll
 
     - name: Create GitHub Release
       shell: pwsh

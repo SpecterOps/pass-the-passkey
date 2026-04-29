@@ -41,7 +41,6 @@ jobs:
       with:
         languages: ${{ matrix.language }}
         build-mode: ${{ matrix.build-mode }}
-        config-file: ./.github/codeql/codeql-config.yml
         queries: security-and-quality # Options: code-scanning, security-extended, security-and-quality
 
     - name: Perform CodeQL Analysis
