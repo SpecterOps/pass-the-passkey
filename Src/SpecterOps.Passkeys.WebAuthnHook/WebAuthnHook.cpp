@@ -237,6 +237,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
     HMODULE WINAPI HookLoadLibraryW(LPCWSTR fileName)
     {
         const HMODULE module = TrueLoadLibraryW(fileName);
+        // Browsers load webauthn.dll by module name, not by path.
         if (fileName != nullptr && ::_wcsicmp(fileName, WebAuthnModuleName) == 0)
         {
             AttachAssertionHook();
@@ -248,6 +249,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
     HMODULE WINAPI HookLoadLibraryExW(LPCWSTR fileName, HANDLE file, DWORD flags)
     {
         const HMODULE module = TrueLoadLibraryExW(fileName, file, flags);
+        // Browsers load webauthn.dll by module name, not by path.
         if (fileName != nullptr && ::_wcsicmp(fileName, WebAuthnModuleName) == 0)
         {
             AttachAssertionHook();
@@ -282,6 +284,11 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         TrueWebAuthNAuthenticatorGetAssertion = target;
         TrueWebAuthNFreeAssertion = reinterpret_cast<WebAuthNFreeAssertionFn>(
             ::GetProcAddress(webAuthnModule, FreeAssertionExportName));
+        if (TrueWebAuthNFreeAssertion == nullptr)
+        {
+            ::InterlockedExchange(&g_assertionHookInstalled, 0);
+            return false;
+        }
 
         if (DetourTransactionBegin() != NO_ERROR)
         {
@@ -314,19 +321,27 @@ namespace SpecterOps::Passkeys::WebAuthnHook
 
         DetourUpdateThread(::GetCurrentThread());
         const LONG loadLibraryResult = DetourAttach(reinterpret_cast<PVOID*>(&TrueLoadLibraryW), HookLoadLibraryW);
-        const LONG loadLibraryExResult = DetourAttach(reinterpret_cast<PVOID*>(&TrueLoadLibraryExW), HookLoadLibraryExW);
-        const LONG commitResult = DetourTransactionCommit();
-
-        const bool success = loadLibraryResult == NO_ERROR
-            && loadLibraryExResult == NO_ERROR
-            && commitResult == NO_ERROR;
-
-        if (success)
+        if (loadLibraryResult != NO_ERROR)
         {
-            ::InterlockedExchange(&g_bootstrapHooksInstalled, 1);
+            DetourTransactionAbort();
+            return false;
         }
 
-        return success;
+        const LONG loadLibraryExResult = DetourAttach(reinterpret_cast<PVOID*>(&TrueLoadLibraryExW), HookLoadLibraryExW);
+        if (loadLibraryExResult != NO_ERROR)
+        {
+            DetourTransactionAbort();
+            return false;
+        }
+
+        const LONG commitResult = DetourTransactionCommit();
+        if (commitResult != NO_ERROR)
+        {
+            return false;
+        }
+
+        ::InterlockedExchange(&g_bootstrapHooksInstalled, 1);
+        return true;
     }
 
     /// Removes any installed assertion or bootstrap detours before the hook DLL unloads.

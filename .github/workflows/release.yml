@@ -39,6 +39,10 @@ jobs:
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
 
+    - name: Setup vcpkg MSBuild Integration
+      shell: pwsh
+      run: vcpkg integrate install
+
     - name: Build WebAuthn Hook x86
       run: msbuild Src/SpecterOps.Passkeys.WebAuthnHook/SpecterOps.Passkeys.WebAuthnHook.vcxproj /p:Configuration=Release /p:Platform=Win32 /m
 
