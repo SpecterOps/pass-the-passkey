@@ -657,7 +657,7 @@ internal static class HookCommand
                 {
                     // Snapshot the window / webauthn / hook state for each process in one pass so the
                     // selection logic below can reference the same values without re-querying.
-                    IEnumerable<BrowserProcessInfo> candidates = processes.Select(process => BrowserProcessInfo.Create(process));
+                    List<BrowserProcessInfo> candidates = processes.Select(process => BrowserProcessInfo.Create(process)).ToList();
 
                     // Narrow to the first tier that has any hits; fall through to "show everything" only
                     // when both window-owning and webauthn-loaded subsets are empty.
@@ -822,13 +822,22 @@ internal static class HookCommand
             // so each FreeLibrary call only decrements one reference. Retry until the module is fully gone.
             for (int attempt = 0; attempt < MaxUnloadAttempts; attempt++)
             {
-                processHandle.TryRunRemoteThread(
+                if (!processHandle.TryRunRemoteThread(
                     freeLibraryAddress,
                     hookModule,
                     FreeLibraryExport,
                     pid,
                     logger,
-                    out _);
+                    out uint freeLibraryResult))
+                {
+                    return false;
+                }
+
+                if (freeLibraryResult == 0)
+                {
+                    logger.LogError("Remote FreeLibrary returned false for {Name} ({Pid}).", processName, pid);
+                    return false;
+                }
 
                 process.Refresh();
                 if (!TryGetHookModule(process, out hookModule))
