@@ -1,7 +1,7 @@
 using System.Buffers.Text;
 using System.CommandLine;
-using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
@@ -13,7 +13,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Win32.SafeHandles;
 using Windows.Win32;
 using Windows.Win32.Foundation;
-using Windows.Win32.System.Memory;
 using Windows.Win32.System.SystemInformation;
 using Windows.Win32.System.Threading;
 
@@ -700,85 +699,83 @@ internal static class HookCommand
     /// <returns><c>true</c> when the hook is loaded (or was already loaded); <c>false</c> if any Win32 call failed.</returns>
     private static unsafe bool InjectIntoProcess(int pid, string dllPath, ILogger logger)
     {
-        using var process = Process.GetProcessById(pid);
-        if (TryGetHookModule(process, out _))
-        {
-            logger.LogInformation("Skipping {Name} (pid {Pid}): hook is already loaded.", process.ProcessName, process.Id);
-            return true;
-        }
-
-        var processHandle = PInvoke.OpenProcess(
-            PROCESS_ACCESS_RIGHTS.PROCESS_CREATE_THREAD
-            | PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_INFORMATION
-            | PROCESS_ACCESS_RIGHTS.PROCESS_VM_OPERATION
-            | PROCESS_ACCESS_RIGHTS.PROCESS_VM_WRITE
-            | PROCESS_ACCESS_RIGHTS.PROCESS_VM_READ,
-            false,
-            (uint)process.Id);
-
-        if (processHandle.IsNull)
-        {
-            LogLastPInvokeError(logger, nameof(PInvoke.OpenProcess), process.Id);
-            return false;
-        }
-
         try
         {
-            var dllPathBytes = Encoding.Unicode.GetBytes(dllPath + '\0');
-            fixed (byte* dllPathBytesPtr = dllPathBytes)
+            using var process = Process.GetProcessById(pid);
+            string processName = process.ProcessName;
+
+            if (TryGetHookModule(process, out _))
             {
-                var remoteBuffer = PInvoke.VirtualAllocEx(
-                    processHandle,
-                    null,
-                    (nuint)dllPathBytes.Length,
-                    VIRTUAL_ALLOCATION_TYPE.MEM_COMMIT | VIRTUAL_ALLOCATION_TYPE.MEM_RESERVE,
-                    PAGE_PROTECTION_FLAGS.PAGE_READWRITE);
-
-                if (remoteBuffer is null)
-                {
-                    LogLastPInvokeError(logger, nameof(PInvoke.VirtualAllocEx), process.Id);
-                    return false;
-                }
-
-                try
-                {
-                    if (!PInvoke.WriteProcessMemory(processHandle, remoteBuffer, dllPathBytesPtr, (nuint)dllPathBytes.Length, null))
-                    {
-                        LogLastPInvokeError(logger, nameof(PInvoke.WriteProcessMemory), process.Id);
-                        return false;
-                    }
-
-                    if (!TryRunRemoteThread(
-                        processHandle,
-                        GetKernel32ExportAddress(LoadLibraryWExport),
-                        remoteBuffer,
-                        LoadLibraryWExport,
-                        process.Id,
-                        logger,
-                        out uint loadResult))
-                    {
-                        return false;
-                    }
-
-                    if (loadResult == 0)
-                    {
-                        logger.LogError("Remote LoadLibraryW returned null for pid {Pid}.", process.Id);
-                        return false;
-                    }
-                }
-                finally
-                {
-                    PInvoke.VirtualFreeEx(processHandle, remoteBuffer, 0, VIRTUAL_FREE_TYPE.MEM_RELEASE);
-                }
+                logger.LogInformation("Skipping {Name} (pid {Pid}): hook is already loaded.", processName, pid);
+                return true;
             }
-        }
-        finally
-        {
-            PInvoke.CloseHandle(processHandle);
-        }
 
-        logger.LogInformation("Injected {Dll} into {Name} (pid {Pid}).", Path.GetFileName(dllPath), process.ProcessName, process.Id);
-        return true;
+            using var processHandle = SafeProcessHandle.OpenProcess(
+                PROCESS_ACCESS_RIGHTS.PROCESS_CREATE_THREAD
+                | PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_INFORMATION
+                | PROCESS_ACCESS_RIGHTS.PROCESS_VM_OPERATION
+                | PROCESS_ACCESS_RIGHTS.PROCESS_VM_WRITE
+                | PROCESS_ACCESS_RIGHTS.PROCESS_VM_READ,
+                false,
+                pid);
+
+            if (processHandle.IsInvalid)
+            {
+                PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.OpenProcess), pid);
+                return false;
+            }
+
+            var dllPathBytes = Encoding.Unicode.GetBytes(dllPath + '\0');
+            using var remoteBuffer = RemoteAllocationSafeHandle.Allocate(processHandle, (nuint)dllPathBytes.Length);
+            if (remoteBuffer.IsInvalid)
+            {
+                PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.VirtualAllocEx), pid);
+                return false;
+            }
+
+            if (!processHandle.WriteProcessMemory(remoteBuffer, dllPathBytes))
+            {
+                PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.WriteProcessMemory), pid);
+                return false;
+            }
+
+            var loadLibraryAddress = GetKernel32ExportAddress(LoadLibraryWExport);
+            if (loadLibraryAddress == IntPtr.Zero)
+            {
+                PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.GetProcAddress), pid);
+                return false;
+            }
+
+            if (!processHandle.TryRunRemoteThread(
+                loadLibraryAddress,
+                remoteBuffer,
+                LoadLibraryWExport,
+                pid,
+                logger,
+                out uint loadResult))
+            {
+                return false;
+            }
+
+            if (loadResult == 0)
+            {
+                logger.LogError("Remote LoadLibraryW returned null for pid {Pid}.", pid);
+                return false;
+            }
+
+            logger.LogInformation("Injected {Dll} into {Name} (pid {Pid}).", Path.GetFileName(dllPath), processName, pid);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            logger.LogWarning("Cannot inject into pid {Pid}: the process exited before it could be opened.", pid);
+            return false;
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning("Cannot inject into pid {Pid}: {Message}", pid, ex.Message);
+            return false;
+        }
     }
 
     /// <summary>
@@ -788,41 +785,50 @@ internal static class HookCommand
     /// <returns><c>true</c> when the module is fully unloaded (or was not loaded); <c>false</c> if a call failed or the count never reached zero.</returns>
     private static unsafe bool UnloadFromProcess(int pid, ILogger logger)
     {
-        using var process = Process.GetProcessById(pid);
-
-        if (!TryGetHookModule(process, out var hookModule))
-        {
-            logger.LogInformation("Skipping {Name} (pid {Pid}): hook is not loaded.", process.ProcessName, pid);
-            return true;
-        }
-
-        // Read the name once; process.ProcessName may throw after the process exits.
-        string processName = process.ProcessName;
-
-        var processHandle = PInvoke.OpenProcess(
-            PROCESS_ACCESS_RIGHTS.PROCESS_CREATE_THREAD
-            | PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_INFORMATION
-            | PROCESS_ACCESS_RIGHTS.PROCESS_VM_OPERATION
-            | PROCESS_ACCESS_RIGHTS.PROCESS_VM_READ,
-            false,
-            (uint)pid);
-
-        if (processHandle.IsNull)
-        {
-            LogLastPInvokeError(logger, nameof(PInvoke.OpenProcess), pid);
-            return false;
-        }
-
-        // Resolve FreeLibrary once rather than on every loop iteration.
-        var freeLibraryAddress = GetKernel32ExportAddress(FreeLibraryExport);
-
         try
         {
+            using var process = Process.GetProcessById(pid);
+            string processName = process.ProcessName;
+
+            if (!TryGetHookModule(process, out var hookModule))
+            {
+                logger.LogInformation("Skipping {Name} (pid {Pid}): hook is not loaded.", processName, pid);
+                return true;
+            }
+
+            using var processHandle = SafeProcessHandle.OpenProcess(
+                PROCESS_ACCESS_RIGHTS.PROCESS_CREATE_THREAD
+                | PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_INFORMATION
+                | PROCESS_ACCESS_RIGHTS.PROCESS_VM_OPERATION
+                | PROCESS_ACCESS_RIGHTS.PROCESS_VM_READ,
+                false,
+                pid);
+
+            if (processHandle.IsInvalid)
+            {
+                PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.OpenProcess), pid);
+                return false;
+            }
+
+            // Resolve FreeLibrary once rather than on every loop iteration.
+            var freeLibraryAddress = GetKernel32ExportAddress(FreeLibraryExport);
+            if (freeLibraryAddress == IntPtr.Zero)
+            {
+                PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.GetProcAddress), pid);
+                return false;
+            }
+
             // Attach installs two detours (the assertion hook and optionally the LoadLibrary bootstraps),
             // so each FreeLibrary call only decrements one reference. Retry until the module is fully gone.
             for (int attempt = 0; attempt < MaxUnloadAttempts; attempt++)
             {
-                TryRunRemoteThread(processHandle, freeLibraryAddress, (void*)hookModule!.BaseAddress, FreeLibraryExport, pid, logger, out _);
+                processHandle.TryRunRemoteThread(
+                    freeLibraryAddress,
+                    hookModule,
+                    FreeLibraryExport,
+                    pid,
+                    logger,
+                    out _);
 
                 process.Refresh();
                 if (!TryGetHookModule(process, out hookModule))
@@ -831,14 +837,20 @@ internal static class HookCommand
                     return true;
                 }
             }
-        }
-        finally
-        {
-            PInvoke.CloseHandle(processHandle);
-        }
 
-        logger.LogError("Unable to fully unload the hook from {Name} (pid {Pid}).", processName, pid);
-        return false;
+            logger.LogError("Unable to fully unload the hook from {Name} (pid {Pid}).", processName, pid);
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            logger.LogWarning("Cannot unload hook from pid {Pid}: the process exited before it could be opened.", pid);
+            return false;
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning("Cannot unload hook from pid {Pid}: {Message}", pid, ex.Message);
+            return false;
+        }
     }
 
     /// <summary>
@@ -864,49 +876,6 @@ internal static class HookCommand
             : pipeName;
 
     /// <summary>
-    /// Runs <paramref name="startAddress"/> as a remote thread inside the target process, waits for it to exit,
-    /// and reports the 32-bit return value via <paramref name="exitCode"/>.
-    /// Returns <c>false</c> only when the thread could not be created or its exit code could not be retrieved.
-    /// </summary>
-    private static unsafe bool TryRunRemoteThread(
-        HANDLE processHandle,
-        IntPtr startAddress,
-        void* parameter,
-        string routineName,
-        int pid,
-        ILogger logger,
-        out uint exitCode)
-    {
-        exitCode = 0;
-        using var processSafeHandle = new SafeFileHandle((IntPtr)processHandle.Value, ownsHandle: false);
-        var startRoutine = Marshal.GetDelegateForFunctionPointer<LPTHREAD_START_ROUTINE>(startAddress);
-
-        using var threadHandle = PInvoke.CreateRemoteThread(
-            processSafeHandle,
-            null,
-            0,
-            startRoutine,
-            parameter,
-            0,
-            out _);
-
-        if (threadHandle.IsInvalid)
-        {
-            LogLastPInvokeError(logger, nameof(PInvoke.CreateRemoteThread), pid);
-            return false;
-        }
-
-        PInvoke.WaitForSingleObject(threadHandle, PInvoke.INFINITE);
-        if (!PInvoke.GetExitCodeThread(threadHandle, out exitCode))
-        {
-            LogLastPInvokeError(logger, nameof(PInvoke.GetExitCodeThread), pid);
-            return false;
-        }
-
-        return true;
-    }
-
-    /// <summary>
     /// Resolves the full path to the hook DLL matching the target process's architecture,
     /// using <paramref name="explicitPath"/> when provided, otherwise falling back to a co-located <c>WebAuthnHook_{arch}.dll</c>.
     /// </summary>
@@ -925,7 +894,7 @@ internal static class HookCommand
             return null;
         }
 
-        var arch = DetectProcessArchitecture(pid);
+        var arch = DetectProcessArchitecture(pid, logger);
         var dllName = arch switch
         {
             Architecture.X64 => HookModulePrefix + "x64.dll",
@@ -956,41 +925,36 @@ internal static class HookCommand
     /// accounting for WoW64 (x86-on-x64) and WoW64-style x64-on-ARM64 emulation.
     /// </summary>
     /// <returns>The detected <see cref="Architecture"/>, or <c>null</c> if the value cannot be obtained or mapped.</returns>
-    private static unsafe Architecture? DetectProcessArchitecture(int pid)
+    private static unsafe Architecture? DetectProcessArchitecture(int pid, ILogger logger)
     {
-        var handle = PInvoke.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, (uint)pid);
-        if (handle.IsNull)
+        using var handle = SafeProcessHandle.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (handle.IsInvalid)
         {
+            PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.OpenProcess), pid);
             return null;
         }
 
-        try
+        IMAGE_FILE_MACHINE processMachine;
+        IMAGE_FILE_MACHINE nativeMachine;
+        if (!handle.IsWow64Process(out processMachine, out nativeMachine))
         {
-            IMAGE_FILE_MACHINE processMachine;
-            IMAGE_FILE_MACHINE nativeMachine;
-            if (!PInvoke.IsWow64Process2(handle, &processMachine, &nativeMachine))
-            {
-                return null;
-            }
-
-            // IMAGE_FILE_MACHINE_UNKNOWN in processMachine means the target is running natively,
-            // so the process architecture equals the host's native architecture.
-            var machine = processMachine == IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_UNKNOWN
-                ? nativeMachine
-                : processMachine;
-
-            return machine switch
-            {
-                IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_I386 => Architecture.X86,
-                IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_AMD64 => Architecture.X64,
-                IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_ARM64 => Architecture.Arm64,
-                _ => (Architecture?)null
-            };
+            PInvokeErrorLogger.LogLastPInvokeError(logger, nameof(PInvoke.IsWow64Process2), pid);
+            return null;
         }
-        finally
+
+        // IMAGE_FILE_MACHINE_UNKNOWN in processMachine means the target is running natively,
+        // so the process architecture equals the host's native architecture.
+        var machine = processMachine == IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_UNKNOWN
+            ? nativeMachine
+            : processMachine;
+
+        return machine switch
         {
-            PInvoke.CloseHandle(handle);
-        }
+            IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_I386 => Architecture.X86,
+            IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_AMD64 => Architecture.X64,
+            IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_ARM64 => Architecture.Arm64,
+            _ => (Architecture?)null
+        };
     }
 
     /// <summary>
@@ -1048,7 +1012,7 @@ internal static class HookCommand
     /// so detach works regardless of which architecture variant was injected.
     /// </summary>
     /// <returns><c>true</c> and the matching module when found; otherwise <c>false</c>.</returns>
-    private static bool TryGetHookModule(Process process, out ProcessModule? hookModule)
+    private static bool TryGetHookModule(Process process, [NotNullWhen(true)] out ProcessModule? hookModule)
     {
         hookModule = null;
 
@@ -1072,20 +1036,6 @@ internal static class HookCommand
         }
 
         return false;
-    }
-
-    /// <summary>
-    /// Logs the most recent Win32 error (retrieved via <see cref="Marshal.GetLastWin32Error"/>) together with its system message.
-    /// </summary>
-    private static void LogLastPInvokeError(ILogger logger, string operation, int pid)
-    {
-        int error = Marshal.GetLastWin32Error();
-        logger.LogError(
-            "{Operation} failed for pid {Pid} ({Code}: {Message}).",
-            operation,
-            pid,
-            error,
-            new Win32Exception(error).Message);
     }
 
     /// <summary>

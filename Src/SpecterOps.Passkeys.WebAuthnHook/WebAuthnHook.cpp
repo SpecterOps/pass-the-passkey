@@ -140,6 +140,12 @@ namespace SpecterOps::Passkeys::WebAuthnHook
 
             return std::string(challenge->value.GetString(), challenge->value.GetStringLength());
         }
+
+        /// Returns true when a browser-style LoadLibrary target names webauthn.dll directly.
+        bool IsWebAuthnModuleLoadTarget(LPCWSTR fileName)
+        {
+            return fileName != nullptr && ::_wcsicmp(fileName, WebAuthnModuleName) == 0;
+        }
     }
 
     /// Detour entrypoint that optionally modifies and forwards WebAuthN assertion requests.
@@ -237,8 +243,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
     HMODULE WINAPI HookLoadLibraryW(LPCWSTR fileName)
     {
         const HMODULE module = TrueLoadLibraryW(fileName);
-        // Browsers load webauthn.dll by module name, not by path.
-        if (fileName != nullptr && ::_wcsicmp(fileName, WebAuthnModuleName) == 0)
+        if (IsWebAuthnModuleLoadTarget(fileName))
         {
             AttachAssertionHook();
         }
@@ -249,8 +254,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
     HMODULE WINAPI HookLoadLibraryExW(LPCWSTR fileName, HANDLE file, DWORD flags)
     {
         const HMODULE module = TrueLoadLibraryExW(fileName, file, flags);
-        // Browsers load webauthn.dll by module name, not by path.
-        if (fileName != nullptr && ::_wcsicmp(fileName, WebAuthnModuleName) == 0)
+        if (IsWebAuthnModuleLoadTarget(fileName))
         {
             AttachAssertionHook();
         }
@@ -300,9 +304,15 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         const LONG attachResult = DetourAttach(
             reinterpret_cast<PVOID*>(&TrueWebAuthNAuthenticatorGetAssertion),
             HookWebAuthNAuthenticatorGetAssertion);
+        if (attachResult != NO_ERROR)
+        {
+            DetourTransactionAbort();
+            ::InterlockedExchange(&g_assertionHookInstalled, 0);
+            return false;
+        }
 
         const LONG commitResult = DetourTransactionCommit();
-        if (attachResult != NO_ERROR || commitResult != NO_ERROR)
+        if (commitResult != NO_ERROR)
         {
             ::InterlockedExchange(&g_assertionHookInstalled, 0);
             return false;
@@ -354,19 +364,55 @@ namespace SpecterOps::Passkeys::WebAuthnHook
 
         DetourUpdateThread(::GetCurrentThread());
 
-        if (::InterlockedCompareExchange(&g_assertionHookInstalled, 0, 1) == 1 && TrueWebAuthNAuthenticatorGetAssertion != nullptr)
+        const bool detachAssertionHook = ::InterlockedCompareExchange(&g_assertionHookInstalled, 1, 1) == 1
+            && TrueWebAuthNAuthenticatorGetAssertion != nullptr;
+        if (detachAssertionHook)
         {
-            DetourDetach(
+            const LONG detachResult = DetourDetach(
                 reinterpret_cast<PVOID*>(&TrueWebAuthNAuthenticatorGetAssertion),
                 HookWebAuthNAuthenticatorGetAssertion);
+            if (detachResult != NO_ERROR)
+            {
+                DetourTransactionAbort();
+                return;
+            }
         }
 
-        if (::InterlockedCompareExchange(&g_bootstrapHooksInstalled, 0, 1) == 1)
+        const bool detachBootstrapHooks = ::InterlockedCompareExchange(&g_bootstrapHooksInstalled, 1, 1) == 1;
+        if (detachBootstrapHooks)
         {
-            DetourDetach(reinterpret_cast<PVOID*>(&TrueLoadLibraryW), HookLoadLibraryW);
-            DetourDetach(reinterpret_cast<PVOID*>(&TrueLoadLibraryExW), HookLoadLibraryExW);
+            const LONG detachLoadLibraryResult = DetourDetach(
+                reinterpret_cast<PVOID*>(&TrueLoadLibraryW),
+                HookLoadLibraryW);
+            if (detachLoadLibraryResult != NO_ERROR)
+            {
+                DetourTransactionAbort();
+                return;
+            }
+
+            const LONG detachLoadLibraryExResult = DetourDetach(
+                reinterpret_cast<PVOID*>(&TrueLoadLibraryExW),
+                HookLoadLibraryExW);
+            if (detachLoadLibraryExResult != NO_ERROR)
+            {
+                DetourTransactionAbort();
+                return;
+            }
         }
 
-        DetourTransactionCommit();
+        if (DetourTransactionCommit() != NO_ERROR)
+        {
+            return;
+        }
+
+        if (detachAssertionHook)
+        {
+            ::InterlockedExchange(&g_assertionHookInstalled, 0);
+        }
+
+        if (detachBootstrapHooks)
+        {
+            ::InterlockedExchange(&g_bootstrapHooksInstalled, 0);
+        }
     }
 }

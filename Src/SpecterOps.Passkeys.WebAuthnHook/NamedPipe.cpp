@@ -33,6 +33,36 @@ namespace SpecterOps::Passkeys::WebAuthnHook
     namespace
     {
         using Base64Url = cppcodec::base64_url_unpadded;
+        using JsonWriter = rapidjson::Writer<rapidjson::StringBuffer>;
+
+        /// Writes a JSON string value from a string view.
+        void WriteString(JsonWriter& writer, const std::string_view value)
+        {
+            writer.String(
+                value.empty() ? "" : value.data(),
+                static_cast<rapidjson::SizeType>(value.size()));
+        }
+
+        /// Writes a JSON string field.
+        void WriteStringField(
+            JsonWriter& writer,
+            const std::string_view key,
+            const std::string_view value)
+        {
+            writer.Key(
+                key.empty() ? "" : key.data(),
+                static_cast<rapidjson::SizeType>(key.size()));
+            WriteString(writer, value);
+        }
+
+        /// Writes a JSON unsigned integer field.
+        void WriteUintField(JsonWriter& writer, const std::string_view key, const unsigned value)
+        {
+            writer.Key(
+                key.empty() ? "" : key.data(),
+                static_cast<rapidjson::SizeType>(key.size()));
+            writer.Uint(value);
+        }
 
         /// Transcodes a UTF-16 string view to UTF-8.
         std::string Utf16ToUtf8(const std::wstring_view wide)
@@ -111,7 +141,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
                 const std::string value = (credBlob->pbCredBlob != nullptr && credBlob->cbCredBlob > 0)
                     ? Base64Url::encode(credBlob->pbCredBlob, credBlob->cbCredBlob)
                     : std::string{};
-                writer.String(value.c_str(), static_cast<rapidjson::SizeType>(value.size()));
+                WriteString(writer, value);
                 return;
             }
 
@@ -130,7 +160,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
             const std::string value = Base64Url::encode(
                 static_cast<const uint8_t*>(extension.pvExtension),
                 extension.cbExtension);
-            writer.String(value.c_str(), static_cast<rapidjson::SizeType>(value.size()));
+            WriteString(writer, value);
         }
 
         /// Writes extension outputs carried by WEBAUTHN_ASSERTION::Extensions.
@@ -172,14 +202,12 @@ namespace SpecterOps::Passkeys::WebAuthnHook
 
             writer.Key("largeBlob");
             writer.StartObject();
-            writer.Key("status");
-            writer.Uint(assertion->dwCredLargeBlobStatus);
+            WriteUintField(writer, "status", static_cast<unsigned>(assertion->dwCredLargeBlobStatus));
 
             if (assertion->pbCredLargeBlob != nullptr && assertion->cbCredLargeBlob > 0)
             {
                 const std::string blob = Base64Url::encode(assertion->pbCredLargeBlob, assertion->cbCredLargeBlob);
-                writer.Key("blob");
-                writer.String(blob.c_str(), static_cast<rapidjson::SizeType>(blob.size()));
+                WriteStringField(writer, "blob", blob);
             }
             else if (assertion->dwCredLargeBlobStatus != WEBAUTHN_CRED_LARGE_BLOB_STATUS_NONE)
             {
@@ -212,16 +240,14 @@ namespace SpecterOps::Passkeys::WebAuthnHook
             const std::string first = Base64Url::encode(
                 assertion->pHmacSecret->pbFirst,
                 assertion->pHmacSecret->cbFirst);
-            writer.Key("first");
-            writer.String(first.c_str(), static_cast<rapidjson::SizeType>(first.size()));
+            WriteStringField(writer, "first", first);
 
             if (assertion->pHmacSecret->pbSecond != nullptr && assertion->pHmacSecret->cbSecond > 0)
             {
                 const std::string second = Base64Url::encode(
                     assertion->pHmacSecret->pbSecond,
                     assertion->pHmacSecret->cbSecond);
-                writer.Key("second");
-                writer.String(second.c_str(), static_cast<rapidjson::SizeType>(second.size()));
+                WriteStringField(writer, "second", second);
             }
 
             writer.EndObject();
@@ -244,8 +270,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
             const std::string value = Base64Url::encode(
                 assertion->pbUnsignedExtensionOutputs,
                 assertion->cbUnsignedExtensionOutputs);
-            writer.Key("unsignedExtensionOutputs");
-            writer.String(value.c_str(), static_cast<rapidjson::SizeType>(value.size()));
+            WriteStringField(writer, "unsignedExtensionOutputs", value);
         }
 
         /// Writes client extension results from fields on the native assertion struct.
@@ -302,10 +327,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
                 authenticatorAttachment = "cross-platform";
             }
 
-            writer.Key("authenticatorAttachment");
-            writer.String(
-                authenticatorAttachment.data(),
-                static_cast<rapidjson::SizeType>(authenticatorAttachment.size()));
+            WriteStringField(writer, "authenticatorAttachment", authenticatorAttachment);
         }
 
         /// Writes the native assertion fields as a WebAuthn-style JSON response object.
@@ -331,21 +353,15 @@ namespace SpecterOps::Passkeys::WebAuthnHook
                 : std::string{};
 
             writer.StartObject();
-            writer.Key("id");
-            writer.String(credentialId.c_str(), static_cast<rapidjson::SizeType>(credentialId.size()));
-            writer.Key("rawId");
-            writer.String(credentialId.c_str(), static_cast<rapidjson::SizeType>(credentialId.size()));
-            writer.Key("type");
-            writer.String("public-key");
+            WriteStringField(writer, "id", credentialId);
+            WriteStringField(writer, "rawId", credentialId);
+            WriteStringField(writer, "type", "public-key");
             WriteAuthenticatorAttachment(writer, assertion);
             writer.Key("response");
             writer.StartObject();
-            writer.Key("clientDataJSON");
-            writer.String(clientDataJson.c_str(), static_cast<rapidjson::SizeType>(clientDataJson.size()));
-            writer.Key("authenticatorData");
-            writer.String(authenticatorData.c_str(), static_cast<rapidjson::SizeType>(authenticatorData.size()));
-            writer.Key("signature");
-            writer.String(signature.c_str(), static_cast<rapidjson::SizeType>(signature.size()));
+            WriteStringField(writer, "clientDataJSON", clientDataJson);
+            WriteStringField(writer, "authenticatorData", authenticatorData);
+            WriteStringField(writer, "signature", signature);
             writer.Key("userHandle");
 
             if (assertion == nullptr || assertion->cbUserId == 0 || assertion->pbUserId == nullptr)
@@ -354,7 +370,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
             }
             else
             {
-                writer.String(userHandle.c_str(), static_cast<rapidjson::SizeType>(userHandle.size()));
+                WriteString(writer, userHandle);
             }
 
             writer.EndObject();
@@ -376,24 +392,16 @@ namespace SpecterOps::Passkeys::WebAuthnHook
             const std::string processNameUtf8 = Utf16ToUtf8(processName);
             const std::string userNameUtf8    = Utf16ToUtf8(userName);
 
-            writer.Key("type");
-            writer.String(type.empty() ? "" : type.data(), static_cast<rapidjson::SizeType>(type.size()));
-            writer.Key("timestamp");
-            writer.String(timestamp.c_str(), static_cast<rapidjson::SizeType>(timestamp.size()));
-            writer.Key("pid");
-            writer.Uint(static_cast<unsigned>(pid));
-            writer.Key("processName");
-            writer.String(processNameUtf8.c_str(), static_cast<rapidjson::SizeType>(processNameUtf8.size()));
-            writer.Key("userName");
-            writer.String(userNameUtf8.c_str(), static_cast<rapidjson::SizeType>(userNameUtf8.size()));
+            WriteStringField(writer, "type", type);
+            WriteStringField(writer, "timestamp", timestamp);
+            WriteUintField(writer, "pid", static_cast<unsigned>(pid));
+            WriteStringField(writer, "processName", processNameUtf8);
+            WriteStringField(writer, "userName", userNameUtf8);
 
             if (previousAction != HookPipeAction::Unknown)
             {
                 const std::string_view previousActionName = HookPipeActionJsonName(previousAction);
-                writer.Key("previousAction");
-                writer.String(
-                    previousActionName.empty() ? "" : previousActionName.data(),
-                    static_cast<rapidjson::SizeType>(previousActionName.size()));
+                WriteStringField(writer, "previousAction", previousActionName);
             }
         }
     }
@@ -536,8 +544,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
         writer.StartObject();
         WriteCommonFields(writer, "AssertionStarted", timestamp, processName, userName, pid, previousAction);
-        writer.Key("rpId");
-        writer.String(rpIdUtf8.c_str(), static_cast<rapidjson::SizeType>(rpIdUtf8.size()));
+        WriteStringField(writer, "rpId", rpIdUtf8);
         writer.EndObject();
         return std::string(buffer.GetString(), buffer.GetSize());
     }
@@ -559,8 +566,7 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
         writer.StartObject();
         WriteCommonFields(writer, "AssertionCompleted", timestamp, processName, userName, pid, previousAction);
-        writer.Key("rpId");
-        writer.String(rpIdUtf8.c_str(), static_cast<rapidjson::SizeType>(rpIdUtf8.size()));
+        WriteStringField(writer, "rpId", rpIdUtf8);
         writer.Key("payload");
         WriteAssertionResponse(writer, clientData, assertion);
         writer.EndObject();
@@ -583,10 +589,8 @@ namespace SpecterOps::Passkeys::WebAuthnHook
         rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
         writer.StartObject();
         WriteCommonFields(writer, "AssertionError", timestamp, processName, userName, pid, previousAction);
-        writer.Key("rpId");
-        writer.String(rpIdUtf8.c_str(), static_cast<rapidjson::SizeType>(rpIdUtf8.size()));
-        writer.Key("hresult");
-        writer.Uint(static_cast<uint32_t>(hresult));
+        WriteStringField(writer, "rpId", rpIdUtf8);
+        WriteUintField(writer, "hresult", static_cast<unsigned>(static_cast<uint32_t>(hresult)));
         writer.EndObject();
         return std::string(buffer.GetString(), buffer.GetSize());
     }

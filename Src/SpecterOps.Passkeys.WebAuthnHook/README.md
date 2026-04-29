@@ -145,7 +145,7 @@ Following is a sample `inject` message:
 
 ### Injection and Unloading
 
-The native librtary is injected with the standard remote `LoadLibraryW` pattern:
+The native library is injected with the standard remote `LoadLibraryW` pattern:
 
 1. Open the target process.
 2. Allocate memory in the target with `VirtualAllocEx`.
