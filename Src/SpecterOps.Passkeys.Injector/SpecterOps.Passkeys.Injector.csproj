@@ -39,10 +39,6 @@
     <TypeScriptIsolatedModules>true</TypeScriptIsolatedModules>
   </PropertyGroup>
 
-  <ItemGroup>
-    <Compile Include="..\Shared\*.cs" Link="Shared\%(Filename)%(Extension)" />
-  </ItemGroup>
-
   <!-- Ensure TypeScript compiles before the embedded resource is included -->
   <ItemGroup>
     <TypeScriptCompile Include="WebAuthnBridge.ts" />
