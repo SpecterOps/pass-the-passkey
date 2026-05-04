@@ -3,7 +3,10 @@
   <Project Path="Src/SpecterOps.Passkeys.Injector/SpecterOps.Passkeys.Injector.csproj" DefaultStartup="true" />
 
   <!-- Mythic plugin -->
-  <Project Path="Src/SpecterOps.Passkeys.Mythic/SpecterOps.Passkeys.Mythic.csproj" Id="ca35c4e9-ab51-4a08-a9c5-8d45c439be22" />
+  <Project Path="Src/SpecterOps.Passkeys.Mythic/SpecterOps.Passkeys.Mythic.csproj" />
+
+  <!-- Native WebAuthn API hook DLL -->
+  <Project Path="Src/SpecterOps.Passkeys.WebAuthnHook/SpecterOps.Passkeys.WebAuthnHook.vcxproj" Id="99f0dd5e-e5b7-48ab-aa57-cb6153ba4cc9" />
 
   <!-- Additional files -->
   <Folder Name="/Documentation/">

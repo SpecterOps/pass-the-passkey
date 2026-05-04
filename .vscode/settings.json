@@ -2,15 +2,15 @@
   "json.schemas": [
     {
       "fileMatch": [
-        "Src/SpecterOps.Passkeys.Injector/Bookmarks.json"
+        "Src/SpecterOps.Passkeys.Injector/MenuItems/Bookmarks.json"
       ],
-      "url": "./Src/SpecterOps.Passkeys.Injector/Bookmarks.schema.json"
+      "url": "./Src/SpecterOps.Passkeys.Injector/MenuItems/Bookmarks.schema.json"
     },
     {
       "fileMatch": [
-        "Src/SpecterOps.Passkeys.Injector/MicrosoftApps.json"
+        "Src/SpecterOps.Passkeys.Injector/MenuItems/MicrosoftApps.json"
       ],
-      "url": "./Src/SpecterOps.Passkeys.Injector/MicrosoftApps.schema.json"
+      "url": "./Src/SpecterOps.Passkeys.Injector/MenuItems/MicrosoftApps.schema.json"
     }
   ]
 }

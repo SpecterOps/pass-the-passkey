@@ -31,11 +31,13 @@ artifacts/
 
 # NuGet Packages
 *.nupkg
+
 # NuGet Symbol Packages
 *.snupkg
 
 # Visual Studio user-specific files
 *.csproj.user
+*.vcxproj.user
 *.sln.docstates
 .vs/
 
@@ -46,18 +48,15 @@ CodeCoverage/
 
 # MSBuild Binary and Structured Log
 *.binlog
+.vcpkg/
+vcpkg_installed/
 
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
 
-# NUnit
-*.VisualState.xml
-TestResult.xml
-nunit-*.xml
-
-# Fody
-FodyWeavers.xsd
-
 # Claude Code
 /.claude/settings.local.json
+
+# OpenAI Codex
+.dotnet/

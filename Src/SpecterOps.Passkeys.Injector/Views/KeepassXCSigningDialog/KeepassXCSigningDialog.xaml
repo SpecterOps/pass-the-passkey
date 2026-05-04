@@ -1,0 +1,177 @@
+<Window x:Class="SpecterOps.Passkeys.Injector.KeepassXCSigningDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:SpecterOps.Passkeys.Injector"
+        mc:Ignorable="d"
+        Title="Sign with KeePassXC"
+        Width="760"
+        MinWidth="680"
+        MinHeight="480"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        d:DataContext="{d:DesignInstance Type=local:KeepassXCSigningDialogViewModel, IsDesignTimeCreatable=False}">
+    <Window.Resources>
+        <Style x:Key="SpinButtonStyle" TargetType="RepeatButton" BasedOn="{StaticResource {x:Type RepeatButton}}">
+            <Setter Property="Width" Value="22"/>
+            <Setter Property="Height" Value="14"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons"/>
+            <Setter Property="FontSize" Value="9"/>
+        </Style>
+        <Style x:Key="FormLabelStyle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+        </Style>
+        <Style x:Key="FormLabelNextColStyle" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="12,0,6,0"/>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel Margin="12" LastChildFill="True">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">
+            <Button IsDefault="True"
+                    Style="{DynamicResource AccentButtonStyle}"
+                    MinWidth="100"
+                    Command="{Binding SignCommand}"
+                    CommandParameter="{Binding RelativeSource={RelativeSource AncestorType={x:Type local:KeepassXCSigningDialog}}, Path=CloseOnSubmit}">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8D7;" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="Sign"/>
+                </StackPanel>
+            </Button>
+        </StackPanel>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <Grid Grid.IsSharedSizeScope="True">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Section 1: Signature Parameters -->
+                <GroupBox Grid.Row="0" Header="Signature Parameters" Margin="0,0,0,8">
+                    <Grid Margin="8,6,8,6">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Passkey File -->
+                        <Grid Grid.Row="0" Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Passkey File:" Style="{StaticResource FormLabelStyle}"/>
+                            <TextBox Grid.Column="1" IsReadOnly="True" Margin="0,0,6,0"
+                                     Text="{Binding PasskeyFilePath, Mode=OneWay, ValidatesOnNotifyDataErrors=True}"/>
+                            <Button Grid.Column="2" Command="{Binding BrowsePasskeyFileCommand}"
+                                    ToolTip="Browse for a KeePassXC-exported passkey file">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xED25;" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Browse…"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <!-- Counter + UV + UP -->
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Signature Counter:" Style="{StaticResource FormLabelStyle}"/>
+                            <TextBox Grid.Column="1" HorizontalContentAlignment="Right" VerticalAlignment="Center"
+                                     Text="{Binding Counter, UpdateSourceTrigger=PropertyChanged}"
+                                     PreviewTextInput="OnCounterPreviewTextInput"/>
+                            <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="2,0,20,0">
+                                <RepeatButton Style="{StaticResource SpinButtonStyle}"
+                                              Command="{Binding IncrementCounterCommand}"
+                                              Content="&#xE70E;" ToolTip="Increment"/>
+                                <RepeatButton Style="{StaticResource SpinButtonStyle}"
+                                              Command="{Binding DecrementCounterCommand}"
+                                              Content="&#xE70D;" ToolTip="Decrement"/>
+                            </StackPanel>
+                            <CheckBox Grid.Column="3" Content="User Verification (UV)" IsChecked="{Binding UserVerified}"
+                                      Margin="0,0,20,0" VerticalAlignment="Center"/>
+                            <CheckBox Grid.Column="4" Content="User Presence (UP)" IsChecked="{Binding UserPresent}"
+                                      VerticalAlignment="Center"/>
+                        </Grid>
+                    </Grid>
+                </GroupBox>
+
+                <!-- Section 2: Details -->
+                <GroupBox Grid.Row="1" Header="Credential Details">
+                    <Grid Margin="8,6,8,6">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Algorithm info row -->
+                        <Grid Grid.Row="0" Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Algorithm:" Style="{StaticResource FormLabelStyle}"/>
+                            <TextBox Grid.Column="1" IsReadOnly="True" Text="{Binding SignatureAlgorithm, Mode=OneWay}"/>
+                            <TextBlock Grid.Column="2" Text="Key Type:" Style="{StaticResource FormLabelNextColStyle}"/>
+                            <TextBox Grid.Column="3" IsReadOnly="True" Text="{Binding KeyType, Mode=OneWay}"/>
+                            <TextBlock Grid.Column="4" Text="Key Length:" Style="{StaticResource FormLabelNextColStyle}"/>
+                            <TextBox Grid.Column="5" IsReadOnly="True" Text="{Binding KeyLength, Mode=OneWay}"/>
+                            <TextBlock Grid.Column="6" Text="Hash:" Style="{StaticResource FormLabelNextColStyle}"/>
+                            <TextBox Grid.Column="7" IsReadOnly="True" Text="{Binding HashFunction, Mode=OneWay}"/>
+                        </Grid>
+
+                        <!-- Credential ID -->
+                        <Grid Grid.Row="1" Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Credential ID:" Style="{StaticResource FormLabelStyle}"/>
+                            <TextBox Grid.Column="1" IsReadOnly="True" Text="{Binding CredentialId, Mode=OneWay}"/>
+                        </Grid>
+
+                        <!-- User Name -->
+                        <Grid Grid.Row="2" Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="User Name:" Style="{StaticResource FormLabelStyle}"/>
+                            <TextBox Grid.Column="1" IsReadOnly="True" Text="{Binding UserName, Mode=OneWay}"/>
+                        </Grid>
+
+                        <!-- User Handle -->
+                        <Grid Grid.Row="3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" SharedSizeGroup="LabelCol"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="User Handle:" Style="{StaticResource FormLabelStyle}"/>
+                            <TextBox Grid.Column="1" IsReadOnly="True" Text="{Binding UserHandle, Mode=OneWay}"/>
+                        </Grid>
+                    </Grid>
+                </GroupBox>
+            </Grid>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

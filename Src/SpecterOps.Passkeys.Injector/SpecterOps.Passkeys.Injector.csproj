@@ -31,6 +31,7 @@
     <TypeScriptSourceMap>false</TypeScriptSourceMap>
     <TypeScriptGeneratesDeclarations>false</TypeScriptGeneratesDeclarations>
     <TypeScriptOutDir>.</TypeScriptOutDir>
+    <TypeScriptRootDir>.</TypeScriptRootDir>
     <TypeScriptSkipLibCheck>true</TypeScriptSkipLibCheck>
     <TypeScriptNoUnusedLocals>true</TypeScriptNoUnusedLocals>
     <TypeScriptNoUnusedParameters>true</TypeScriptNoUnusedParameters>
@@ -41,17 +42,17 @@
 
   <!-- Ensure TypeScript compiles before the embedded resource is included -->
   <ItemGroup>
-    <TypeScriptCompile Include="WebAuthnBridge.ts" />
+    <TypeScriptCompile Include="Services\WebAuthnBridge\WebAuthnBridge.ts" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- Embed the compiled JavaScript file -->
-    <EmbeddedResource Include="WebAuthnBridge.js">
+    <EmbeddedResource Include="Services\WebAuthnBridge\WebAuthnBridge.js">
       <DependentUpon>WebAuthnBridge.ts</DependentUpon>
     </EmbeddedResource>
     <!-- Embed JSON config files -->
-    <EmbeddedResource Include="Bookmarks.json" />
-    <EmbeddedResource Include="MicrosoftApps.json" />
+    <EmbeddedResource Include="MenuItems\Bookmarks.json" />
+    <EmbeddedResource Include="MenuItems\MicrosoftApps.json" />
     <!-- Include icon as resource for WPF window -->
     <Resource Include="Lock.ico" />
   </ItemGroup>

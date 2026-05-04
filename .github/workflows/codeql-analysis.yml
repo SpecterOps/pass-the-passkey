@@ -9,7 +9,7 @@ on:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    runs-on: 'windows-latest'
+    runs-on: 'windows-2025-vs2026'
     permissions:
       # required for all workflows
       security-events: write
@@ -27,10 +27,14 @@ jobs:
           build-mode: none
         - language: csharp
           build-mode: none
+        - language: c-cpp
+          build-mode: none
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v6
+      with:
+        submodules: true
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v4

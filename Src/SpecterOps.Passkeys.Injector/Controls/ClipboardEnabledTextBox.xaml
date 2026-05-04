@@ -19,12 +19,14 @@
     </UserControl.Resources>
     <Grid>
         <TextBox Text="{Binding Text, ElementName=Root, Mode=TwoWay}"
+             d:Text="Lorem Ipsum"
              IsReadOnly="True"
              VerticalAlignment="Stretch"
              VerticalContentAlignment="Center"/>
         <Button FontFamily="Segoe Fluent Icons" Content="&#xE8C8;"
                 ToolTip="Copy to clipboard"
                 Style="{StaticResource OverlayCopyButtonStyle}"
+                d:Visibility="Visible"
                 VerticalAlignment="Stretch"
                 HorizontalAlignment="Right"
                 Width="{Binding ActualHeight, ElementName=Root}"
