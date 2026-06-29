@@ -1,0 +1,9 @@
+{
+  "solution": {
+    "path": "Pass-the-Passkey.slnx",
+    "projects": [
+      "Src\\SpecterOps.Passkeys.Injector\\SpecterOps.Passkeys.Injector.csproj",
+      "Src\\SpecterOps.Passkeys.SharpPasskeys\\SpecterOps.Passkeys.SharpPasskeys.csproj"
+    ]
+  }
+}

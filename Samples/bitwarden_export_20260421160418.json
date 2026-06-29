@@ -1,0 +1,86 @@
+{
+  "encrypted": false,
+  "folders": [],
+  "items": [
+    {
+      "passwordHistory": [],
+      "revisionDate": "2026-04-21T14:03:33.030Z",
+      "creationDate": "2026-04-21T14:03:32.740Z",
+      "id": "417ab60b-f44c-45f4-a7b1-b43300e7afd3",
+      "type": 1,
+      "reprompt": 0,
+      "name": "webauthn.io",
+      "notes": null,
+      "favorite": false,
+      "fields": [],
+      "login": {
+        "uris": [
+          {
+            "uri": "https://webauthn.io/"
+          }
+        ],
+        "fido2Credentials": [
+          {
+            "credentialId": "76c3b5c8-d880-46e6-9f57-ced060607557",
+            "keyType": "public-key",
+            "keyAlgorithm": "ECDSA",
+            "keyCurve": "P-256",
+            "keyValue": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQggWpHh_vUiMxLNSAK5nGfFSzz3n3pR5MBee_lFayn9xKhRANCAAQkDGs8XpcxjYfUcQ0KTbyDaEFFKTw4paO-PRdLUATZWs1yz0E9ie4JIv6QDGuercEnbKhztfn42kO3bWWni9f9",
+            "rpId": "webauthn.io",
+            "userHandle": "cnEzaNHWcYK3coWZjvoaV1Hj9gnI12mKe2dL2HZVFlY",
+            "userName": "johndoe",
+            "counter": "3",
+            "rpName": "webauthn.io",
+            "userDisplayName": "John Doe",
+            "discoverable": "true",
+            "creationDate": "2026-04-21T14:03:33.011Z"
+          }
+        ],
+        "username": "johndoe",
+        "password": null,
+        "totp": null
+      },
+      "collectionIds": null
+    },
+    {
+      "passwordHistory": [],
+      "revisionDate": "2026-04-22T08:14:11.500Z",
+      "creationDate": "2026-04-22T08:14:11.250Z",
+      "id": "5b8e9c3a-2f1d-4c4a-9a05-c63300f8bea4",
+      "type": 1,
+      "reprompt": 0,
+      "name": "webauthn.io",
+      "notes": null,
+      "favorite": false,
+      "fields": [],
+      "login": {
+        "uris": [
+          {
+            "uri": "https://webauthn.io/"
+          }
+        ],
+        "fido2Credentials": [
+          {
+            "credentialId": "8f3e6d54-9a21-47b8-bd6e-fb7e91002d18",
+            "keyType": "public-key",
+            "keyAlgorithm": "ECDSA",
+            "keyCurve": "P-256",
+            "keyValue": "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgieOHaQEcuWmyYJDNKdPMd2yq3TH59xe_Ry6TA62ElcWhRANCAASW2KmRZiL3V0YsSF1qewZXrhQrs2HoTthHZmjSBVYyLkG-GD-BAThnZsehqR_zMyizr0QV3OEzARsNMM0dRzdO",
+            "rpId": "webauthn.io",
+            "userHandle": "amFuZVNtaXRoVXNlckhhbmRsZQ",
+            "userName": "janesmith",
+            "counter": "1",
+            "rpName": "webauthn.io",
+            "userDisplayName": "Jane Smith",
+            "discoverable": "true",
+            "creationDate": "2026-04-22T08:14:11.482Z"
+          }
+        ],
+        "username": "janesmith",
+        "password": null,
+        "totp": null
+      },
+      "collectionIds": null
+    }
+  ]
+}

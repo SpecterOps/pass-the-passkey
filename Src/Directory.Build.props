@@ -1,0 +1,33 @@
+<Project>
+  <!-- These common settings only apply to C# projects. -->
+  <PropertyGroup>
+    <!-- Configure C# language properties -->
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ProduceReferenceAssembly>false</ProduceReferenceAssembly>
+
+    <!-- Code Analysis -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- Redirect output directories -->
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath>$(MSBuildThisFileDirectory)../Build</ArtifactsPath>
+
+    <!-- Only selected projects will generate a NuGet package -->
+    <IsPackable>false</IsPackable>
+    <IsPublishable>false</IsPublishable>
+    <EnablePackageValidation>true</EnablePackageValidation>
+
+    <!-- Assembly metadata -->
+    <Authors>Michael Grafnetter</Authors>
+    <Company>SpecterOps</Company>
+    <Copyright>Copyright © SpecterOps</Copyright>
+
+    <!-- Use lock files to enable NuGet package caching at GitHub -->
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+</Project>

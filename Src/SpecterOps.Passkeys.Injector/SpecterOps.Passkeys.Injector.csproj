@@ -1,0 +1,81 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <IsPublishable>true</IsPublishable>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <DebugType>embedded</DebugType>
+    <!-- Exclude XML documentation files from publish output -->
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
+    <ApplicationIcon>Lock.ico</ApplicationIcon>
+    <RootNamespace>SpecterOps.Passkeys.Injector</RootNamespace>
+    <!-- Assembly metadata -->
+    <AssemblyTitle>Passkey Injector</AssemblyTitle>
+    <Product>SpecterOps Passkey Injector</Product>
+    <AssemblyName>PasskeyInjector</AssemblyName>
+    <Version>2.6.0</Version>
+    <!-- TypeScript configuration (must be synced with tsconfig.json) -->
+    <TypeScriptCompileBlocked>false</TypeScriptCompileBlocked>
+    <TypeScriptToolsVersion>Latest</TypeScriptToolsVersion>
+    <TypeScriptTarget>ES2024</TypeScriptTarget>
+    <TypeScriptLib>ES2024,DOM,DOM.Iterable</TypeScriptLib>
+    <TypeScriptModuleKind>ESNext</TypeScriptModuleKind>
+    <TypeScriptStrict>true</TypeScriptStrict>
+    <TypeScriptNoEmitOnError>true</TypeScriptNoEmitOnError>
+    <TypeScriptRemoveComments>true</TypeScriptRemoveComments>
+    <TypeScriptSourceMap>false</TypeScriptSourceMap>
+    <TypeScriptGeneratesDeclarations>false</TypeScriptGeneratesDeclarations>
+    <TypeScriptOutDir>.</TypeScriptOutDir>
+    <TypeScriptRootDir>.</TypeScriptRootDir>
+    <TypeScriptSkipLibCheck>true</TypeScriptSkipLibCheck>
+    <TypeScriptNoUnusedLocals>true</TypeScriptNoUnusedLocals>
+    <TypeScriptNoUnusedParameters>true</TypeScriptNoUnusedParameters>
+    <TypeScriptNoFallthroughCasesInSwitch>true</TypeScriptNoFallthroughCasesInSwitch>
+    <TypeScriptNoImplicitReturns>true</TypeScriptNoImplicitReturns>
+    <TypeScriptIsolatedModules>true</TypeScriptIsolatedModules>
+  </PropertyGroup>
+
+  <!-- Ensure TypeScript compiles before the embedded resource is included -->
+  <ItemGroup>
+    <TypeScriptCompile Include="Services\WebAuthnBridge\WebAuthnBridge.ts" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embed the compiled JavaScript file -->
+    <EmbeddedResource Include="Services\WebAuthnBridge\WebAuthnBridge.js">
+      <DependentUpon>WebAuthnBridge.ts</DependentUpon>
+    </EmbeddedResource>
+    <!-- Embed JSON config files -->
+    <EmbeddedResource Include="MenuItems\Bookmarks.json" />
+    <EmbeddedResource Include="MenuItems\MicrosoftApps.json" />
+    <!-- Include icon as resource for WPF window -->
+    <Resource Include="Lock.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DSInternals.Win32.WebAuthn" Version="3.1.0" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="Microsoft.NET.ILLink.Tasks" Version="10.0.8" />
+    <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.15.0" />
+    <PackageReference Include="Microsoft.TypeScript.MSBuild" Version="5.9.3">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3650.58" />
+    <PackageReference Include="NSec.Cryptography" Version="25.4.0" />
+  </ItemGroup>
+
+  <!-- Remove temporary WPF build directories that accumulate in the bin output -->
+  <Target Name="CleanWpfTempDirectories" AfterTargets="Build">
+    <ItemGroup>
+      <WpfTempDirectories Include="$([System.IO.Directory]::GetDirectories('$(ArtifactsPath)\bin', '$(MSBuildProjectName)_*_wpftmp'))" />
+    </ItemGroup>
+    <RemoveDir Directories="@(WpfTempDirectories)" />
+  </Target>
+
+</Project>

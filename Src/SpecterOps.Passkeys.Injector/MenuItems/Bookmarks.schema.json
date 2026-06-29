@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specterops.io/schema/passkeys/bookmarks.schema.json",
+  "title": "Bookmarks",
+  "description": "Bookmark list with optional base64-encoded favicons.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["name", "url"],
+    "properties": {
+      "name": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Bookmark display name."
+      },
+      "url": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Destination URL opened when the bookmark is selected."
+      },
+      "favicon": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Optional base64-encoded favicon image data."
+      }
+    }
+  }
+}

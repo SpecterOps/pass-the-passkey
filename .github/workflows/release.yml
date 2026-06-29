@@ -1,0 +1,82 @@
+name: Release
+run-name: 'Release ${{ github.run_number }}'
+
+permissions:
+  id-token: write
+  contents: write
+
+on: workflow_dispatch
+
+jobs:
+  build:
+    name: 'Build'
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 10
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v6
+      with:
+        submodules: true
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        cache: true
+        cache-dependency-path: 'Src/*/packages.lock.json'
+
+    - name: Restore NuGet Packages
+      run: dotnet restore Pass-the-Passkey-CSharp.slnf --use-lock-file
+
+    - name: Build and Publish Injector x64
+      run: dotnet publish Src/SpecterOps.Passkeys.Injector --runtime win-x64 --no-restore
+
+    - name: Build and Publish Injector ARM64
+      run: dotnet publish Src/SpecterOps.Passkeys.Injector --runtime win-arm64 --no-restore
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v3
+
+    - name: Setup vcpkg MSBuild Integration
+      run: vcpkg integrate install
+
+    - name: Cache vcpkg Installed Packages
+      uses: actions/cache@v5
+      with:
+        path: Src/SpecterOps.Passkeys.WebAuthnHook/vcpkg_installed
+        key: vcpkg-${{ runner.os }}-${{ hashFiles('Src/SpecterOps.Passkeys.WebAuthnHook/vcpkg.json') }}
+
+    - name: Build WebAuthn Hook x86
+      run: msbuild Src/SpecterOps.Passkeys.WebAuthnHook/SpecterOps.Passkeys.WebAuthnHook.vcxproj /p:Configuration=Release /p:Platform=Win32 /m
+
+    - name: Build WebAuthn Hook x64
+      run: msbuild Src/SpecterOps.Passkeys.WebAuthnHook/SpecterOps.Passkeys.WebAuthnHook.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+
+    - name: Build WebAuthn Hook ARM64
+      run: msbuild Src/SpecterOps.Passkeys.WebAuthnHook/SpecterOps.Passkeys.WebAuthnHook.vcxproj /p:Configuration=Release /p:Platform=ARM64 /m
+
+    - name: Build SharpPasskeys CLI
+      run: dotnet build Src/SpecterOps.Passkeys.SharpPasskeys --configuration Release --no-restore
+
+    - name: Extract Versions
+      id: versions
+      shell: pwsh
+      run: |
+        [string]$injector = (Select-Xml -Path 'Src/SpecterOps.Passkeys.Injector/SpecterOps.Passkeys.Injector.csproj' -XPath '//Version').Node.InnerText
+        [string]$mythic = (Select-Xml -Path 'Src/SpecterOps.Passkeys.SharpPasskeys/SpecterOps.Passkeys.SharpPasskeys.csproj' -XPath '//Version').Node.InnerText
+        "INJECTOR_VERSION=$injector" >> $env:GITHUB_OUTPUT
+        "MYTHIC_VERSION=$mythic" >> $env:GITHUB_OUTPUT
+
+    - name: Create GitHub Release
+      shell: pwsh
+      working-directory: Build
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        @'
+        ### Notable Changes
+
+        '@ > release-notes.md
+        gh release create v${{ steps.versions.outputs.INJECTOR_VERSION }} publish/SpecterOps.Passkeys.Injector/**/*.exe bin/SpecterOps.Passkeys.SharpPasskeys/release/*.exe bin/SpecterOps.Passkeys.WebAuthnHook/Release/*.dll --draft --latest --title "Passkey Injector ${{ steps.versions.outputs.INJECTOR_VERSION }}" --notes-file release-notes.md
