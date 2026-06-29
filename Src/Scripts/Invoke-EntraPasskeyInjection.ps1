@@ -248,16 +248,8 @@ function Invoke-EntraIDPasskeyLogin {
     }
 
     $loginUri = "https://login.microsoftonline.com/common/login?sso_reload=true"
-    $payload = @{
-        type         = 23
-        ps           = 23
-        assertion    = $fidoPayload
-        lmcCanary    = $lmcCanary.Value
-        hpgrequestid = $hpgrequestid
-        ctx          = $SessionInformation.sCtx
-        canary       = $SessionInformation.canary
-        flowToken    = $SessionInformation.oGetCredTypeResult.FlowToken
-    }
+    # Reuse the verified finalize payload and only replace the reload-specific flow token.
+    $payload['flowToken'] = $SessionInformation.oGetCredTypeResult.FlowToken
 
     try {
         Write-Host "$([char]0x2718) Submitting FIDO2 assertion to microsoftonline.com with sso_reload=true ..." -ForegroundColor Cyan

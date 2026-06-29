@@ -45,8 +45,9 @@
         if (!buffer) {
             return null;
         }
-        const arrayBuffer = ArrayBuffer.isView(buffer) ? buffer.buffer : buffer;
-        const bytes = new Uint8Array(arrayBuffer);
+        const bytes = ArrayBuffer.isView(buffer)
+            ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+            : new Uint8Array(buffer);
         let binary = '';
         for (let i = 0; i < bytes.byteLength; i++) {
             binary += String.fromCharCode(bytes[i]);

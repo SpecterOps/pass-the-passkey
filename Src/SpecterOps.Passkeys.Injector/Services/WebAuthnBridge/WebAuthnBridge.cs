@@ -26,20 +26,20 @@ public class WebAuthnBridge : IWebAuthnBridge
     /// </summary>
     /// <param name="optionsJson">The PublicKeyCredentialRequestOptions from JavaScript as a JSON string.</param>
     /// <returns>A PublicKeyCredential response as a JSON string, or null if the operation fails.</returns>
-    public async Task<string?> GetCredentialAsync(string optionsJson, string? mediation = null)
+    public Task<string?> GetCredentialAsync(string optionsJson, string? mediation = null)
     {
         try
         {
             Debug.WriteLine($"WebAuthnBridge.GetCredentialAsync options JSON: {optionsJson}");
             var eventArgs = new CredentialRequestEventArgs(optionsJson, mediation);
             CredentialRequested?.Invoke(this, eventArgs);
-            return eventArgs.PublicKeyCredential;
+            return Task.FromResult(eventArgs.PublicKeyCredential);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"WebAuthnBridge.GetCredentialAsync error: {ex.Message}");
             // Return null if the operation fails, so that the native WebAuthn flow can proceed.
-            return null;
+            return Task.FromResult<string?>(null);
         }
     }
 
@@ -49,20 +49,20 @@ public class WebAuthnBridge : IWebAuthnBridge
     /// <param name="optionsJson">The PublicKeyCredentialCreationOptions from JavaScript as a JSON string.</param>
     /// <param name="mediation">The mediation value from JavaScript.</param>
     /// <returns>A PublicKeyCredential response as a JSON string, or null if the operation fails.</returns>
-    public async Task<string?> CreateCredentialAsync(string optionsJson, string? mediation = null)
+    public Task<string?> CreateCredentialAsync(string optionsJson, string? mediation = null)
     {
         try
         {
             Debug.WriteLine($"WebAuthnBridge.CreateCredentialAsync options JSON: {optionsJson}");
             var eventArgs = new CredentialCreationEventArgs(optionsJson, mediation);
             CredentialCreationRequested?.Invoke(this, eventArgs);
-            return eventArgs.PublicKeyCredential;
+            return Task.FromResult(eventArgs.PublicKeyCredential);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"WebAuthnBridge.CreateCredentialAsync error: {ex.Message}");
             // Return null if the operation fails, so that the native WebAuthn flow can proceed.
-            return null;
+            return Task.FromResult<string?>(null);
         }
     }
 }

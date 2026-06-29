@@ -72,12 +72,15 @@ internal static class WaitCommand
 
         watcher.EventRecordWritten += (_, args) =>
         {
-            if (args.EventRecord is not null)
+            using EventRecord? eventRecord = args.EventRecord;
+            if (eventRecord is not null)
             {
                 // RpId is the second EventData field (index 1) in event ID 1103
-                rpId = args.EventRecord.Properties[RpIdPropertyIndex].Value?.ToString();
-                timeCreated = args.EventRecord.TimeCreated;
-                userName = ResolveUserName(args.EventRecord.UserId);
+                rpId = eventRecord.Properties.Count > RpIdPropertyIndex
+                    ? eventRecord.Properties[RpIdPropertyIndex].Value?.ToString()
+                    : null;
+                timeCreated = eventRecord.TimeCreated;
+                userName = ResolveUserName(eventRecord.UserId);
                 eventArrived.Set();
             }
         };
