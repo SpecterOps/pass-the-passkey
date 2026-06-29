@@ -530,14 +530,21 @@ internal static class HookCommand
         int failures = 0;
         foreach (var process in targets)
         {
-            var resolvedDll = ResolveHookDllPath(process.Pid, dllPath, logger);
+            Architecture? targetArchitecture = DetectProcessArchitecture(process.Pid, logger);
+            if (targetArchitecture is null)
+            {
+                failures++;
+                continue;
+            }
+
+            var resolvedDll = ResolveHookDllPath(targetArchitecture.Value, dllPath, logger);
             if (resolvedDll is null)
             {
                 failures++;
                 continue;
             }
 
-            if (!InjectIntoProcess(process.Pid, resolvedDll, logger))
+            if (!InjectIntoProcess(process.Pid, targetArchitecture.Value, resolvedDll, logger))
             {
                 failures++;
             }
@@ -561,7 +568,14 @@ internal static class HookCommand
         int failures = 0;
         foreach (var process in targets)
         {
-            if (!UnloadFromProcess(process.Pid, logger))
+            Architecture? targetArchitecture = DetectProcessArchitecture(process.Pid, logger);
+            if (targetArchitecture is null)
+            {
+                failures++;
+                continue;
+            }
+
+            if (!UnloadFromProcess(process.Pid, targetArchitecture.Value, logger))
             {
                 failures++;
             }
@@ -693,7 +707,7 @@ internal static class HookCommand
     /// Writes the hook DLL path into the target's address space and calls <c>LoadLibraryW</c> on it via a remote thread.
     /// </summary>
     /// <returns><c>true</c> when the hook is loaded (or was already loaded); <c>false</c> if any Win32 call failed.</returns>
-    private static unsafe bool InjectIntoProcess(int pid, string dllPath, ILogger logger)
+    private static unsafe bool InjectIntoProcess(int pid, Architecture targetArchitecture, string dllPath, ILogger logger)
     {
         try
         {
@@ -704,6 +718,11 @@ internal static class HookCommand
             {
                 logger.LogInformation("Skipping {Name} (pid {Pid}): hook is already loaded.", processName, pid);
                 return true;
+            }
+
+            if (!CanRunRemoteKernel32Export(processName, pid, targetArchitecture, logger))
+            {
+                return false;
             }
 
             using var processHandle = SafeProcessHandle.OpenProcess(
@@ -779,7 +798,7 @@ internal static class HookCommand
     /// giving up after <see cref="MaxUnloadAttempts"/> attempts.
     /// </summary>
     /// <returns><c>true</c> when the module is fully unloaded (or was not loaded); <c>false</c> if a call failed or the count never reached zero.</returns>
-    private static unsafe bool UnloadFromProcess(int pid, ILogger logger)
+    private static unsafe bool UnloadFromProcess(int pid, Architecture targetArchitecture, ILogger logger)
     {
         try
         {
@@ -790,6 +809,11 @@ internal static class HookCommand
             {
                 logger.LogInformation("Skipping {Name} (pid {Pid}): hook is not loaded.", processName, pid);
                 return true;
+            }
+
+            if (!CanRunRemoteKernel32Export(processName, pid, targetArchitecture, logger))
+            {
+                return false;
             }
 
             using var processHandle = SafeProcessHandle.OpenProcess(
@@ -885,7 +909,7 @@ internal static class HookCommand
     /// using <paramref name="explicitPath"/> when provided, otherwise falling back to a co-located <c>WebAuthnHook_{arch}.dll</c>.
     /// </summary>
     /// <returns>The resolved DLL path, or <c>null</c> when no matching DLL can be located.</returns>
-    private static string? ResolveHookDllPath(int pid, string? explicitPath, ILogger logger)
+    private static string? ResolveHookDllPath(Architecture targetArchitecture, string? explicitPath, ILogger logger)
     {
         if (!string.IsNullOrWhiteSpace(explicitPath))
         {
@@ -899,8 +923,7 @@ internal static class HookCommand
             return null;
         }
 
-        var arch = DetectProcessArchitecture(pid, logger);
-        var dllName = arch switch
+        var dllName = targetArchitecture switch
         {
             Architecture.X64 => HookModulePrefix + "x64.dll",
             Architecture.X86 => HookModulePrefix + "x86.dll",
@@ -910,7 +933,7 @@ internal static class HookCommand
 
         if (dllName is null)
         {
-            logger.LogError("Unsupported or undetectable architecture for pid {Pid}.", pid);
+            logger.LogError("Unsupported target architecture {Architecture}.", targetArchitecture);
             return null;
         }
 
@@ -960,6 +983,27 @@ internal static class HookCommand
             IMAGE_FILE_MACHINE.IMAGE_FILE_MACHINE_ARM64 => Architecture.Arm64,
             _ => (Architecture?)null
         };
+    }
+
+    /// <summary>
+    /// Returns <c>true</c> when the target process matches the current CLI architecture, which is required
+    /// because remote <c>LoadLibraryW</c>/<c>FreeLibrary</c> calls reuse local <c>kernel32.dll</c> export addresses.
+    /// </summary>
+    private static bool CanRunRemoteKernel32Export(string processName, int pid, Architecture targetArchitecture, ILogger logger)
+    {
+        Architecture currentArchitecture = RuntimeInformation.ProcessArchitecture;
+        if (targetArchitecture != currentArchitecture)
+        {
+            logger.LogError(
+                "Cannot operate on {Name} (pid {Pid}): SharpPasskeys is running as {CurrentArchitecture}, but the target process is {TargetArchitecture}. Run a matching-architecture SharpPasskeys build instead.",
+                processName,
+                pid,
+                currentArchitecture,
+                targetArchitecture);
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>
