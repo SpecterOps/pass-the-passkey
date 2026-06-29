@@ -76,7 +76,7 @@ The [DSInternals.Passkeys](https://www.powershellgallery.com/packages/DSInternal
 
 ### Beacon Object File (BOF)
 
-We have deciced not to publish our BOF implementation of SharpPasskeys yet.
+We have decided not to publish our BOF implementation of SharpPasskeys yet.
 
 ## Related Tools
 
