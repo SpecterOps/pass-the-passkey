@@ -1,0 +1,22 @@
+{
+  "files.associations": {
+    "*.passkey": "json",
+    "*.cxf": "json",
+    "*.config": "xml"
+  },
+  "json.schemas": [
+    {
+      "fileMatch": [
+        "Src/SpecterOps.Passkeys.Injector/MenuItems/Bookmarks.json"
+      ],
+      "url": "./Src/SpecterOps.Passkeys.Injector/MenuItems/Bookmarks.schema.json"
+    },
+    {
+      "fileMatch": [
+        "Src/SpecterOps.Passkeys.Injector/MenuItems/MicrosoftApps.json"
+      ],
+      "url": "./Src/SpecterOps.Passkeys.Injector/MenuItems/MicrosoftApps.schema.json"
+    }
+  ],
+  "dotnet.defaultSolution": "Pass-the-Passkey-CSharp.slnf"
+}

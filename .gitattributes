@@ -1,0 +1,4 @@
+Src/SpecterOps.Passkeys.Injector/Services/WebAuthnBridge/WebAuthnBridge.js linguist-generated=true
+*.passkey linguist-language=JSON
+*.cxf linguist-language=JSON
+*.config linguist-language=XML

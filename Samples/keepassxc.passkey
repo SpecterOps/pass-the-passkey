@@ -1,0 +1,8 @@
+{
+    "credentialId": "Y3JlZGVudGlhbElkRXhhbXBsZQ",
+    "privateKey": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIBd4oRR3vT0WnwSbKdeHy9OZATL4WHrYvt7KgDdiuf1L\n-----END PRIVATE KEY-----\n",
+    "relyingParty": "webauthn.io",
+    "url": "https://webauthn.io",
+    "userHandle": "cnEzaNHWcYK3coWZjvoaV1Hj9gnI12mKe2dL2HZVFlY",
+    "username": "johndoe"
+}

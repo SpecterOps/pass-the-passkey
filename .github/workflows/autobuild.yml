@@ -1,0 +1,102 @@
+name: CI Build
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+
+on:
+  push:
+    paths:
+    - 'Src/**'
+    - '.github/workflows/autobuild.yml'
+
+jobs:
+  build:
+    name: 'Build'
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 10
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v6
+      with:
+        submodules: true
+
+    - name: Add Defender Exclusion for Build Output
+      shell: pwsh
+      run: Add-MpPreference -ExclusionPath "${{ github.workspace }}\Build"
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        cache: true
+        cache-dependency-path: 'Src/*/packages.lock.json'
+
+    - name: Restore NuGet Packages
+      run: dotnet restore Pass-the-Passkey-CSharp.slnf --use-lock-file
+
+    - name: Build and Publish Injector x64
+      run: dotnet publish Src/SpecterOps.Passkeys.Injector --runtime win-x64 --no-restore
+
+    - name: Build and Publish Injector ARM64
+      run: dotnet publish Src/SpecterOps.Passkeys.Injector --runtime win-arm64 --no-restore
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v3
+
+    - name: Setup vcpkg MSBuild Integration
+      run: vcpkg integrate install
+
+    - name: Cache vcpkg Installed Packages
+      uses: actions/cache@v5
+      with:
+        path: Src/SpecterOps.Passkeys.WebAuthnHook/vcpkg_installed
+        key: vcpkg-${{ runner.os }}-${{ hashFiles('Src/SpecterOps.Passkeys.WebAuthnHook/vcpkg.json') }}
+
+    - name: Build WebAuthn Hook x86
+      run: msbuild Src/SpecterOps.Passkeys.WebAuthnHook/SpecterOps.Passkeys.WebAuthnHook.vcxproj /p:Configuration=Release /p:Platform=Win32 /m
+
+    - name: Build WebAuthn Hook x64
+      run: msbuild Src/SpecterOps.Passkeys.WebAuthnHook/SpecterOps.Passkeys.WebAuthnHook.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+
+    - name: Build WebAuthn Hook ARM64
+      run: msbuild Src/SpecterOps.Passkeys.WebAuthnHook/SpecterOps.Passkeys.WebAuthnHook.vcxproj /p:Configuration=Release /p:Platform=ARM64 /m
+
+    - name: Build SharpPasskeys CLI
+      run: dotnet build Src/SpecterOps.Passkeys.SharpPasskeys --configuration Release --no-restore
+
+    - name: Extract Versions
+      id: versions
+      shell: pwsh
+      run: |
+        [string]$injector = (Select-Xml -Path 'Src/SpecterOps.Passkeys.Injector/SpecterOps.Passkeys.Injector.csproj' -XPath '//Version').Node.InnerText
+        [string]$mythic = (Select-Xml -Path 'Src/SpecterOps.Passkeys.SharpPasskeys/SpecterOps.Passkeys.SharpPasskeys.csproj' -XPath '//Version').Node.InnerText
+        "INJECTOR_VERSION=$injector" >> $env:GITHUB_OUTPUT
+        "MYTHIC_VERSION=$mythic" >> $env:GITHUB_OUTPUT
+
+    - name: Upload Injector x64 as Artifact
+      uses: actions/upload-artifact@v6
+      with:
+        name: PasskeyInjector_v${{ steps.versions.outputs.INJECTOR_VERSION }}_x64
+        path: Build/publish/SpecterOps.Passkeys.Injector/release_win-x64/*
+
+    - name: Upload Injector ARM64 as Artifact
+      uses: actions/upload-artifact@v6
+      with:
+        name: PasskeyInjector_v${{ steps.versions.outputs.INJECTOR_VERSION }}_arm64
+        path: Build/publish/SpecterOps.Passkeys.Injector/release_win-arm64/*
+
+    - name: Upload WebAuthn Hook as Artifact
+      uses: actions/upload-artifact@v6
+      with:
+        name: WebAuthnHook_v${{ steps.versions.outputs.MYTHIC_VERSION }}
+        path: Build/bin/SpecterOps.Passkeys.SharpPasskeys/release/WebAuthnHook_*.dll
+
+    - name: Upload SharpPasskeys CLI as Artifact
+      uses: actions/upload-artifact@v6
+      with:
+        name: SharpPasskeys_v${{ steps.versions.outputs.MYTHIC_VERSION }}
+        path: Build/bin/SpecterOps.Passkeys.SharpPasskeys/release/SharpPasskeys.exe
