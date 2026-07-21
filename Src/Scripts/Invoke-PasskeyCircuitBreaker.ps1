@@ -2,12 +2,17 @@
 .SYNOPSIS
     Monitors the local computer's Event Log for new WebAuthn assertion responses
     and optionally suspends the browser process.
+.DESCRIPTION
+    This script can be used to exploit the CVE-2026-34348 vulnerability.
 .PARAMETER Suspend
     Indicates whether to suspend the browser process that initiated
     the authentication request.
 .PARAMETER BlockTraffic
     Indicates whether to temporarily block outbound network traffic
     from the browser process during authentication.
+.NOTES
+    Author: Michael Grafnetter
+    Version: 1.0
 #>
 
 #requires -Version 5.1

@@ -73,9 +73,9 @@ jobs:
       shell: pwsh
       run: |
         [string]$injector = (Select-Xml -Path 'Src/SpecterOps.Passkeys.Injector/SpecterOps.Passkeys.Injector.csproj' -XPath '//Version').Node.InnerText
-        [string]$mythic = (Select-Xml -Path 'Src/SpecterOps.Passkeys.SharpPasskeys/SpecterOps.Passkeys.SharpPasskeys.csproj' -XPath '//Version').Node.InnerText
+        [string]$sharpPasskeys = (Select-Xml -Path 'Src/SpecterOps.Passkeys.SharpPasskeys/SpecterOps.Passkeys.SharpPasskeys.csproj' -XPath '//Version').Node.InnerText
         "INJECTOR_VERSION=$injector" >> $env:GITHUB_OUTPUT
-        "MYTHIC_VERSION=$mythic" >> $env:GITHUB_OUTPUT
+        "SHARPPASSKEYS_VERSION=$sharpPasskeys" >> $env:GITHUB_OUTPUT
 
     - name: Upload Injector x64 as Artifact
       uses: actions/upload-artifact@v6
@@ -92,11 +92,11 @@ jobs:
     - name: Upload WebAuthn Hook as Artifact
       uses: actions/upload-artifact@v6
       with:
-        name: WebAuthnHook_v${{ steps.versions.outputs.MYTHIC_VERSION }}
+        name: WebAuthnHook_v${{ steps.versions.outputs.SHARPPASSKEYS_VERSION }}
         path: Build/bin/SpecterOps.Passkeys.SharpPasskeys/release/WebAuthnHook_*.dll
 
     - name: Upload SharpPasskeys CLI as Artifact
       uses: actions/upload-artifact@v6
       with:
-        name: SharpPasskeys_v${{ steps.versions.outputs.MYTHIC_VERSION }}
+        name: SharpPasskeys_v${{ steps.versions.outputs.SHARPPASSKEYS_VERSION }}
         path: Build/bin/SpecterOps.Passkeys.SharpPasskeys/release/SharpPasskeys.exe

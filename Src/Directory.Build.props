@@ -23,6 +23,7 @@
     <EnablePackageValidation>true</EnablePackageValidation>
 
     <!-- Assembly metadata -->
+    <Product>Pass-the-Passkey</Product>
     <Authors>Michael Grafnetter</Authors>
     <Company>SpecterOps</Company>
     <Copyright>Copyright © SpecterOps</Copyright>

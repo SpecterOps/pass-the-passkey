@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:SpecterOps.Passkeys.Injector"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         mc:Ignorable="d"
-        Title="SpecterOps Passkey Injector" Height="768" Width="1024" MinHeight="600" MinWidth="800"
+        Title="Passkey Injector" Height="768" Width="1024" MinHeight="600" MinWidth="800"
         Closed="OnWindowClosed"
         Icon="pack://application:,,,/Lock.ico">
     <Window.Resources>

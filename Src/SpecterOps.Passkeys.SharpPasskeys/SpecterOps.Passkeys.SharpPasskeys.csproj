@@ -10,8 +10,7 @@
     <!-- Disable the generation of the config file -->
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
-    <AssemblyTitle>Passkeys CLI</AssemblyTitle>
-    <Product>SpecterOps Passkeys CLI</Product>
+    <AssemblyTitle>SharpPasskeys CLI</AssemblyTitle>
     <Version>2.7.0</Version>
     <!-- CA1848: Use LoggerMessage delegates for performance -->
     <!-- CA1873: Avoid expensive logging argument evaluation -->

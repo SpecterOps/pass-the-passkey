@@ -3,6 +3,11 @@
     Fetches recent WebAuthn assertion responses from the local or remote computer's Event Log.
 .PARAMETER ComputerName
     Specifies the name of the computer from which to retrieve recent WebAuthN assertion responses.
+.DESCRIPTION
+    This script can be used to exploit the CVE-2026-34348 vulnerability.
+.NOTES
+    Author: Michael Grafnetter
+    Version: 1.0
 #>
 
 #requires -Version 5.1

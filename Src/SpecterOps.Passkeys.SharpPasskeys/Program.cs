@@ -2,7 +2,7 @@
 namespace SpecterOps.Passkeys.SharpPasskeys;
 
 /// <summary>
-/// Entry point for the Passkeys Mythic CLI, a tool for interacting with the Windows WebAuthn API.
+/// Entry point for the SharpPasskeys CLI, a tool for interacting with the Windows WebAuthn API.
 /// </summary>
 public class Program
 {
@@ -22,7 +22,7 @@ public class Program
         });
         ILogger logger = loggerFactory.CreateLogger("Passkeys");
 
-        var rootCommand = new RootCommand("SpecterOps Passkeys Mythic CLI")
+        var rootCommand = new RootCommand("SharpPasskeys CLI")
         {
             PromptCommand.Create(logger),
             WaitCommand.Create(logger),

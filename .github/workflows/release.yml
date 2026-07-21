@@ -69,9 +69,9 @@ jobs:
       shell: pwsh
       run: |
         [string]$injector = (Select-Xml -Path 'Src/SpecterOps.Passkeys.Injector/SpecterOps.Passkeys.Injector.csproj' -XPath '//Version').Node.InnerText
-        [string]$mythic = (Select-Xml -Path 'Src/SpecterOps.Passkeys.SharpPasskeys/SpecterOps.Passkeys.SharpPasskeys.csproj' -XPath '//Version').Node.InnerText
+        [string]$sharpPasskeys = (Select-Xml -Path 'Src/SpecterOps.Passkeys.SharpPasskeys/SpecterOps.Passkeys.SharpPasskeys.csproj' -XPath '//Version').Node.InnerText
         "INJECTOR_VERSION=$injector" >> $env:GITHUB_OUTPUT
-        "MYTHIC_VERSION=$mythic" >> $env:GITHUB_OUTPUT
+        "SHARPPASSKEYS_VERSION=$sharpPasskeys" >> $env:GITHUB_OUTPUT
 
     - name: Create GitHub Release
       shell: pwsh

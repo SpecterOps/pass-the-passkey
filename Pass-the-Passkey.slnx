@@ -2,7 +2,7 @@
   <!-- C# GUI App -->
   <Project Path="Src/SpecterOps.Passkeys.Injector/SpecterOps.Passkeys.Injector.csproj" DefaultStartup="true" />
 
-  <!-- Mythic plugin -->
+  <!-- SharpPasskeys CLI -->
   <Project Path="Src/SpecterOps.Passkeys.SharpPasskeys/SpecterOps.Passkeys.SharpPasskeys.csproj" />
 
   <!-- Native WebAuthn API hook DLL -->

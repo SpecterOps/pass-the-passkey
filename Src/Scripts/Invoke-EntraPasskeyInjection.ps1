@@ -4,7 +4,10 @@
 .DESCRIPTION
     This script is a quick-and-dirty PoC and should not be used in production environments.
 .NOTES
-    This is a modiefied version of the original script from TokenTactics v2,
+    Author: Michael Grafnetter
+    Version: 1.0
+
+    This is a modified version of the original script from TokenTactics v2,
     created by Fabian Bader.
     Repository: https://github.com/f-bader/TokenTacticsV2
 #>
