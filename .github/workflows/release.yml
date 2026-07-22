@@ -73,6 +73,13 @@ jobs:
         "INJECTOR_VERSION=$injector" >> $env:GITHUB_OUTPUT
         "SHARPPASSKEYS_VERSION=$sharpPasskeys" >> $env:GITHUB_OUTPUT
 
+    - name: Rename Injector Release Assets
+      shell: pwsh
+      working-directory: Build/publish/SpecterOps.Passkeys.Injector
+      run: |
+        Rename-Item -LiteralPath release_win-x64/PasskeyInjector.exe -NewName PasskeyInjector_x64.exe
+        Rename-Item -LiteralPath release_win-arm64/PasskeyInjector.exe -NewName PasskeyInjector_arm64.exe
+
     - name: Create GitHub Release
       shell: pwsh
       working-directory: Build
