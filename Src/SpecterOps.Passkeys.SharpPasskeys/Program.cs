@@ -7,7 +7,7 @@ namespace SpecterOps.Passkeys.SharpPasskeys;
 public class Program
 {
     /// <summary>
-    /// Configures and invokes the CLI with the prompt, wait, and list subcommands.
+    /// Configures and invokes the CLI with the prompt, WHfB, wait, list, hook, and API-version subcommands.
     /// </summary>
     public static int Main(string[] args)
     {
@@ -25,6 +25,7 @@ public class Program
         var rootCommand = new RootCommand("SharpPasskeys CLI")
         {
             PromptCommand.Create(logger),
+            WhfbCommand.Create(logger),
             WaitCommand.Create(logger),
             ListCommand.Create(logger),
             HookCommand.Create(logger),

@@ -85,11 +85,11 @@ internal static class ListCommand
             }
             else
             {
-                var table = new AsciiTable("ID", "Name", "Locked");
+                var table = new AsciiTable("AAGUID", "Name", "Locked");
                 foreach (var auth in authenticators)
                 {
                     table.AddRow(
-                        auth.AuthenticatorId is not null ? Base64Url.EncodeToString(auth.AuthenticatorId) : string.Empty,
+                        auth.AaGuid?.ToString("D", CultureInfo.InvariantCulture) ?? string.Empty,
                         auth.AuthenticatorName ?? string.Empty,
                         auth.Locked ? "Yes" : "No"
                     );

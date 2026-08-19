@@ -11,7 +11,7 @@
     <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
     <GenerateSupportedRuntime>false</GenerateSupportedRuntime>
     <AssemblyTitle>SharpPasskeys CLI</AssemblyTitle>
-    <Version>2.7.0</Version>
+    <Version>2.8.0</Version>
     <!-- CA1848: Use LoggerMessage delegates for performance -->
     <!-- CA1873: Avoid expensive logging argument evaluation -->
     <!-- Acceptable for a short-lived CLI tool with minimal logging -->
@@ -27,7 +27,7 @@
     <PackageReference Include="dnMerge" Version="0.5.15">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="DSInternals.Win32.WebAuthn" Version="3.1.0" />
+    <PackageReference Include="DSInternals.Win32.WebAuthn" Version="3.3.0" />
     <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.275">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

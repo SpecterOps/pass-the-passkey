@@ -10,9 +10,9 @@
       },
       "DSInternals.Win32.WebAuthn": {
         "type": "Direct",
-        "requested": "[3.1.0, )",
-        "resolved": "3.1.0",
-        "contentHash": "yukbFKJuw56iC3a3y5MBYp+PGaqXrPdyUtTfapsEtI9XOVy33D9VxA4MvK9M7QwoaNdr+Q5xThNTv7eogFC+1w==",
+        "requested": "[3.3.0, )",
+        "resolved": "3.3.0",
+        "contentHash": "aMwNeqMIDgy+dWBmmUauud57h3HKpq3TXTktM5j1+Pcm2tsby5afEfwQiB9ouN0NPuMJom7M1KrHQuXsKmcklg==",
         "dependencies": {
           "Microsoft.Bcl.Memory": "10.0.5",
           "Microsoft.Identity.Client": "4.82.1",

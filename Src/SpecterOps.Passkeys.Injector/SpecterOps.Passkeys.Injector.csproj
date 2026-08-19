@@ -17,7 +17,7 @@
     <!-- Assembly metadata -->
     <AssemblyTitle>Passkey Injector</AssemblyTitle>
     <AssemblyName>PasskeyInjector</AssemblyName>
-    <Version>2.7.0</Version>
+    <Version>2.8.0</Version>
     <!-- TypeScript configuration (must be synced with tsconfig.json) -->
     <TypeScriptCompileBlocked>false</TypeScriptCompileBlocked>
     <TypeScriptToolsVersion>Latest</TypeScriptToolsVersion>
@@ -57,7 +57,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="DSInternals.Win32.WebAuthn" Version="3.1.0" />
+    <PackageReference Include="DSInternals.Win32.WebAuthn" Version="3.3.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="Microsoft.NET.ILLink.Tasks" Version="10.0.8" />
     <PackageReference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.15.0" />

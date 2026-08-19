@@ -46,6 +46,8 @@ by a Windows C2 agent like [Apollo](https://docs.specterops.io/mythic-agents/apo
 The main purpose of this payload is to display a passkey authentication prompt to the user
 and retrieve the resulting assertion. It can also list available Windows Hello credentials
 and monitor the Windows Event Log for new WebAuthn authentication events.
+Microsoft Entra ID challenges can be signed directly with a local Windows Hello
+for Business key when that key is already unlocked.
 
 See the [SharpPasskeys documentation](Documentation/SharpPasskeys.md) for more information.
 

