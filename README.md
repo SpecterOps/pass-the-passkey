@@ -33,6 +33,7 @@ There are multiple use cases for tampering with the passkey authentication flow,
 - Phishing attacks by forwarding attacker-controlled assertions.
 - Injection of modified assertions to test server-side validation.
 - Signing challenges using stolen synchronized passkeys, e.g., from KeePassXC or Bitwarden.
+- Signing Microsoft Entra ID challenges directly with a local Windows Hello for Business NGC key, bypassing the WebAuthn prompt.
 - Analysis of WebAuthn features and extensions used by a particular cloud service.
 - Learning how the WebAuthn protocol works.
 

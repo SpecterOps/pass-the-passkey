@@ -419,4 +419,5 @@ SharpPasskeys.exe apiversion
 
 ## Notes
 
-The CLI uses [System.CommandLine](https://learn.microsoft.com/en-us/dotnet/standard/commandline/) and [DSInternals.Win32.WebAuthn](https://www.nuget.org/packages/DSInternals.Win32.WebAuthn) 3.3.0, including its `WindowsHelloForBusinessSigner` helper. Release builds are merged into a single assembly with [dnMerge](https://github.com/CCob/dnMerge).
+The CLI uses [System.CommandLine](https://learn.microsoft.com/en-us/dotnet/standard/commandline/) and [DSInternals.Win32.WebAuthn](https://www.nuget.org/packages/DSInternals.Win32.WebAuthn).
+Release builds are merged into a single assembly with [dnMerge](https://github.com/CCob/dnMerge).
