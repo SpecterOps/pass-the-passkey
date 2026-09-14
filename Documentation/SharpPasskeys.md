@@ -5,7 +5,7 @@
 .NET CLI tool that wraps the Windows WebAuthn API (`webauthn.dll`) and the WebAuthn hook DLL for offensive operations against passkeys:
 
 - `prompt` — Trigger a passkey assertion (Windows Hello, security key, or hybrid device) via [WebAuthNAuthenticatorGetAssertion](https://learn.microsoft.com/en-us/windows/win32/api/webauthn/nf-webauthn-webauthnauthenticatorgetassertion)
-- `whfb` — Sign a `login.microsoft.com` assertion directly with a local Windows Hello for Business (NGC) key, without opening a WebAuthn prompt
+- `whfb` — Sign a `login.microsoft.com` assertion directly with a local Windows Hello for Business NGC key, without opening a WebAuthn prompt
 - `wait` — Block until the Windows WebAuthn event log records an assertion request (event ID 1103) and optionally kill `CredentialUIBroker.exe`
 - `list` — Enumerate platform authenticators, third-party authenticator plugins, Windows Hello credentials, recent WebAuthn event-log activity, and process window handles
 - `hook` — Load or unload the [WebAuthn hook DLL](WebAuthnHook.md) into running browser processes and listen on the hook control pipe (`\\.\pipe\WebAuthnHook`)
@@ -228,7 +228,7 @@ SharpPasskeys.exe list hello --private
 +---------------------+---------------------+---------------------------------------------+
 ```
 
-> ![NOTE]
+> [!NOTE]
 > The WebAuthn API does **not** return private keys — only credential metadata and the resulting assertion signature.
 > Private keys are protected by the platform authenticator (TPM-backed or VBS-backed where available).
 
