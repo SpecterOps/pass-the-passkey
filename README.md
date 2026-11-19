@@ -65,6 +65,14 @@ a successful assertion from the browser.
 
 See the [WebAuthn Hook documentation](Documentation/WebAuthnHook.md) for more information.
 
+### phido2
+
+`phido2` is a command-line tool for macOS that works with FIDO2 security keys directly, without the AuthenticationServices API and therefore without any entitlement.
+It shows prompts that mimic the native macOS sign-in sheet to get a WebAuthn assertion from a USB security key or from a phone that scans a QR code,
+and it can watch a security key or a phone being used by another program, such as Safari.
+
+See the [phido2 for macOS documentation](Documentation/phido2-macos.md) for more information.
+
 ### DSInternals Passkey UI
 
 `Passkey UI` is a simple Windows application that provides a graphical user interface for interacting with the Windows WebAuthn API. The source code of this tool is hosted in the [webauthn-interop](https://github.com/MichaelGrafnetter/webauthn-interop) repository.

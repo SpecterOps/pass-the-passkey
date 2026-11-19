@@ -1,17 +1,66 @@
 name: Release
 run-name: 'Release ${{ github.run_number }}'
 
-permissions:
-  id-token: write
-  contents: write
+# Each job states what it needs; only the last one may write to the repository.
+permissions: {}
 
 on: workflow_dispatch
 
 jobs:
-  build:
-    name: 'Build'
+  build-macos:
+    name: 'Build macOS'
+    # Apple silicon runner; Package.swift requires macOS 26.4.
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      BINARY: Build/bin/phido2-macos/release/phido2
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v6
+
+    - name: Install libfido2
+      run: brew install libfido2
+
+    - name: Run Unit Tests
+      run: make test
+
+    - name: Build and Ad-Hoc Sign
+      run: make
+
+    - name: Verify the Binary
+      run: |
+        codesign --verify --strict --verbose=2 "$BINARY"
+        # Fail if it links anything outside the operating system.
+        if otool -L "$BINARY" | tail -n +2 | grep -vE '^[[:space:]]+(/usr/lib/|/System/)'; then
+          echo "::error::phido2 has non-system dynamic dependencies"
+          exit 1
+        fi
+        "$BINARY" --help
+
+    # A tarball keeps the executable bit, which artifact zips drop.
+    - name: Package
+      run: tar -czf phido2-macos-arm64.tar.gz -C "$(dirname "$BINARY")" phido2
+
+    - name: Upload phido2 as Artifact
+      uses: actions/upload-artifact@v6
+      with:
+        name: release-assets-macos
+        path: phido2-macos-arm64.tar.gz
+        if-no-files-found: error
+
+  build-windows:
+    name: 'Build Windows'
     runs-on: windows-2025-vs2026
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      injector-version: ${{ steps.versions.outputs.INJECTOR_VERSION }}
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
@@ -80,14 +129,47 @@ jobs:
         Rename-Item -LiteralPath release_win-x64/PasskeyInjector.exe -NewName PasskeyInjector_x64.exe
         Rename-Item -LiteralPath release_win-arm64/PasskeyInjector.exe -NewName PasskeyInjector_arm64.exe
 
-    - name: Create GitHub Release
+    # Exactly the files that go into the release, in one folder.
+    - name: Collect Release Assets
       shell: pwsh
       working-directory: Build
+      run: |
+        New-Item -ItemType Directory -Path release-assets | Out-Null
+        Copy-Item -Destination release-assets -Path @(
+          'publish/SpecterOps.Passkeys.Injector/*/*.exe',
+          'bin/SpecterOps.Passkeys.SharpPasskeys/release/*.exe',
+          'bin/SpecterOps.Passkeys.WebAuthnHook/Release/*.dll')
+
+    - name: Upload Release Assets as Artifact
+      uses: actions/upload-artifact@v6
+      with:
+        name: release-assets-windows
+        path: Build/release-assets/*
+        if-no-files-found: error
+
+  release:
+    name: 'Create Release'
+    # Runs only if both builds succeeded, so a release never lacks a platform.
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+    - name: Download Release Assets
+      uses: actions/download-artifact@v8
+      with:
+        pattern: release-assets-*
+        path: release-assets
+        merge-multiple: true
+
+    - name: Create GitHub Release
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # There is no checkout in this job, so gh is told the repository.
+        GH_REPO: ${{ github.repository }}
+        VERSION: ${{ needs.build-windows.outputs.injector-version }}
       run: |
-        @'
-        ### Notable Changes
-
-        '@ > release-notes.md
-        gh release create v${{ steps.versions.outputs.INJECTOR_VERSION }} publish/SpecterOps.Passkeys.Injector/**/*.exe bin/SpecterOps.Passkeys.SharpPasskeys/release/*.exe bin/SpecterOps.Passkeys.WebAuthnHook/Release/*.dll --draft --latest --title "Passkey Injector ${{ steps.versions.outputs.INJECTOR_VERSION }}" --notes-file release-notes.md
+        ls -l release-assets
+        printf '### Notable Changes\n\n' > release-notes.md
+        gh release create "v$VERSION" release-assets/* --draft --latest --title "Passkey Injector $VERSION" --notes-file release-notes.md

@@ -1,4 +1,12 @@
+# Files written by tools, not by hand: collapsed in GitHub diffs and left out of language statistics.
 Src/SpecterOps.Passkeys.Injector/Services/WebAuthnBridge/WebAuthnBridge.js linguist-generated=true
+packages.lock.json linguist-generated=true
+Package.resolved linguist-generated=true
 *.passkey linguist-language=JSON
 *.cxf linguist-language=JSON
 *.config linguist-language=XML
+
+# The phido2 tools are built with make and shell tools, which need LF line endings
+# even in a Windows checkout.
+Makefile text eol=lf
+Src/phido2-*/** text eol=lf

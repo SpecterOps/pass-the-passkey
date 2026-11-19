@@ -56,6 +56,14 @@ vcpkg_installed/
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
 
+# Swift Package Manager (phido2). The Makefiles build into Build/; these folders only
+# appear when swift or an IDE is run on a package directly.
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store
+
 # Claude Code
 /.claude/settings.local.json
 

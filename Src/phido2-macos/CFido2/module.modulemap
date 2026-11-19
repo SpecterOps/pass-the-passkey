@@ -1,0 +1,4 @@
+module CFido2 [system] {
+    header "CFido2.h"
+    export *
+}

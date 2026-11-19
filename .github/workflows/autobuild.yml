@@ -12,8 +12,8 @@ on:
     - '.github/workflows/autobuild.yml'
 
 jobs:
-  build:
-    name: 'Build'
+  build-windows:
+    name: 'Build Windows'
     runs-on: windows-2025-vs2026
     timeout-minutes: 30
     env:
@@ -100,3 +100,49 @@ jobs:
       with:
         name: SharpPasskeys_v${{ steps.versions.outputs.SHARPPASSKEYS_VERSION }}
         path: Build/bin/SpecterOps.Passkeys.SharpPasskeys/release/SharpPasskeys.exe
+
+  build-macos:
+    name: 'Build macOS'
+    # Apple silicon runner; Package.swift requires macOS 26.4.
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      BINARY: Build/bin/phido2-macos/release/phido2
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v6
+
+    - name: Install libfido2
+      run: brew install libfido2
+
+    - name: Run Unit Tests
+      run: make test
+
+    - name: Build and Ad-Hoc Sign
+      run: make
+
+    - name: Verify the Binary
+      run: |
+        codesign --verify --strict --verbose=2 "$BINARY"
+        codesign --display --verbose=2 "$BINARY" 2>&1 | grep 'Signature=adhoc'
+        # Fail if it links anything outside the operating system.
+        if otool -L "$BINARY" | tail -n +2 | grep -vE '^[[:space:]]+(/usr/lib/|/System/)'; then
+          echo "::error::phido2 has non-system dynamic dependencies"
+          exit 1
+        fi
+        "$BINARY" --help
+        "$BINARY" prompt --help
+        "$BINARY" monitor --help
+
+    # A tarball keeps the executable bit, which artifact zips drop.
+    - name: Package
+      run: tar -czf phido2-macos-arm64.tar.gz -C "$(dirname "$BINARY")" phido2
+
+    - name: Upload phido2 as Artifact
+      uses: actions/upload-artifact@v6
+      with:
+        name: phido2-macos-arm64
+        path: phido2-macos-arm64.tar.gz
+        if-no-files-found: error

@@ -2,6 +2,8 @@
   "recommendations": [
     "ms-dotnettools.csdevkit",
     "ms-vscode.PowerShell",
+    "swiftlang.swift-vscode",
+    "ms-vscode.makefile-tools",
     "GitHub.vscode-pull-request-github",
     "GitHub.vscode-github-actions",
     "EditorConfig.EditorConfig",

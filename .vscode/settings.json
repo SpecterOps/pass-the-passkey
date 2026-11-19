@@ -18,5 +18,8 @@
       "url": "./Src/SpecterOps.Passkeys.Injector/MenuItems/MicrosoftApps.schema.json"
     }
   ],
-  "dotnet.defaultSolution": "Pass-the-Passkey-CSharp.slnf"
+  "dotnet.defaultSolution": "Pass-the-Passkey-CSharp.slnf",
+  "swift.searchSubfoldersForPackages": true,
+  "swift.autoGenerateLaunchConfigurations": false,
+  "swift.buildPath": "${workspaceFolder}/Build/obj/phido2-macos/vscode"
 }
