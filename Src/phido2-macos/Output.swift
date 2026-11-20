@@ -1,18 +1,9 @@
 import Foundation
 
 // The tool prints each piece of information on standard output as soon as it is known, as a
-// standalone JSON document: an ``AuthenticatorInfo`` (with `--info`), then a
-// ``CredentialsDocument`` (when listing), then one ``PublicKeyCredential`` per assertion. The documents follow one another
-// on the stream, which tools such as `jq` read directly. They are told apart by their
-// members: `transport`, `credentials`, and `type` ("public-key") respectively.
-
-/// Printed when credentials have been listed.
-struct CredentialsDocument: Encodable {
-    /// The credentials found.
-    var credentials: [DiscoveredCredential]
-    /// Where the list came from.
-    var credentialSource: CredentialSource
-}
+// standalone JSON document: an ``AuthenticatorInfo`` (with `--info`), then an array of
+// ``DiscoveredCredential`` (when listing), then one ``PublicKeyCredential`` per assertion.
+// The documents follow one another on the stream, which tools such as `jq` read directly.
 
 private let emitLock = NSLock()
 
@@ -20,7 +11,7 @@ private let emitLock = NSLock()
 ///
 /// May be called from any thread; documents never interleave.
 ///
-/// - Parameter document: An ``AuthenticatorInfo``, ``CredentialsDocument`` or
+/// - Parameter document: An ``AuthenticatorInfo``, an array of ``DiscoveredCredential`` or a
 ///   ``PublicKeyCredential`` from `prompt`; an ``AuthenticatorInfo``, ``ObservedAssertion`` or
 ///   ``ObservedRegistration`` from `monitor`.
 func emit<Document: Encodable>(_ document: Document) {
@@ -50,14 +41,6 @@ enum UserVerification: String {
     /// The authenticator verified the user itself, e.g. with a fingerprint or the phone's
     /// screen lock.
     case builtIn
-}
-
-/// Which CTAP command a credential list was built from.
-enum CredentialSource: String, Encodable {
-    /// `authenticatorCredentialManagement`: the complete list, with public keys.
-    case credentialManagement
-    /// The `authenticatorGetAssertion` response: a fallback for keys without credential management.
-    case assertion
 }
 
 /// Identity and capabilities of an authenticator. Printed with `--info`, as soon as it has

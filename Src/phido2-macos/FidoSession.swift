@@ -26,8 +26,7 @@ struct Request {
     var clientDataJSON: Data
     /// A PIN known in advance. When `nil`, the user is asked only if the key needs one.
     var pin: String?
-    /// Whether to list the key's credentials: those of the relying party, or all of them when
-    /// there is none.
+    /// Whether to list every credential on the key, of all relying parties.
     var discover: Bool
     /// Whether to print the authenticator's details.
     var info = false
@@ -216,27 +215,26 @@ final class FidoSession {
     private func attempt(_ dev: OpaquePointer, _ request: Request, _ verification: Verification) throws {
         // Credential management needs a PIN/UV token, so it is unavailable on keys without either.
         let canManage = fido_dev_supports_credman(dev) && verification.reported != .none
+        let unavailable = fido_dev_supports_credman(dev)
+            ? "Listing credentials needs a PIN or fingerprint, and this security key has neither set"
+            : "This security key does not support credential management, so its credentials cannot be listed"
         guard let rpId = request.rpId else {
-            guard canManage else {
-                throw FidoError(code: 0, operation: fido_dev_supports_credman(dev)
-                    ? "Listing credentials needs a PIN or fingerprint, and this security key has neither set"
-                    : "This security key does not support credential management, so its credentials cannot be listed")
-            }
-            emit(CredentialsDocument(credentials: try discoverAll(dev, pin: verification.pin),
-                                     credentialSource: .credentialManagement))
+            // Nothing else was asked of the key, so this is a failure.
+            guard canManage else { throw FidoError(code: 0, operation: unavailable) }
+            emit(try discoverAll(dev, pin: verification.pin))
             return
         }
         // A retry after a fingerprint mismatch must not print the list a second time.
-        if request.discover, canManage, !credentialsEmitted {
-            emit(CredentialsDocument(credentials: try discover(dev, rpId: rpId, pin: verification.pin),
-                                     credentialSource: .credentialManagement))
+        if request.discover, !credentialsEmitted {
+            if canManage {
+                emit(try discoverAll(dev, pin: verification.pin))
+            } else {
+                // The assertion is still made; only the list is left out.
+                logger.warning("\(unavailable); --list is ignored")
+            }
             credentialsEmitted = true
         }
-        let assertion = try assert(dev, request, rpId: rpId, request.skipUserVerification ? .none : verification)
-        if request.discover && !credentialsEmitted {
-            emit(CredentialsDocument(credentials: assertion.users, credentialSource: .assertion))
-        }
-        assertion.credentials.forEach { emit($0) }
+        try assert(dev, request, rpId: rpId, request.skipUserVerification ? .none : verification).forEach { emit($0) }
     }
 
     /// Polls until a FIDO HID device is attached.
@@ -285,11 +283,17 @@ final class FidoSession {
     ///
     /// - Parameters:
     ///   - dev: An open device that supports credential management.
-    ///   - pin: The PIN, or `nil` to have the key verify the user itself. In that case the key
-    ///     asks for a fingerprint touch for the relying party list and again for each party.
+    ///   - pin: The PIN, or `nil` to have the key verify the user itself (a fingerprint touch).
+    ///
+    /// The user is verified once: a single token with the credential management permission is
+    /// obtained and used for every query. Left to itself, libfido2 would obtain a new one for
+    /// each query, which with a fingerprint means a touch for each relying party.
     /// - Returns: The credentials of all relying parties; empty if the key holds none.
     /// - Throws: ``FidoError`` if the key rejects the PIN, the verification, or the command.
     private func discoverAll(_ dev: OpaquePointer, pin: String?) throws -> [DiscoveredCredential] {
+        try check(fido_dev_get_puat(dev, UInt32(FIDO_PUAT_CREDMAN), nil, pin), "Verifying the user to list credentials")
+        // The token is of no use to the assertion, which needs its own permission.
+        defer { fido_dev_set_puat(dev, nil, 0) }
         var rp = fido_credman_rp_new()
         defer { fido_credman_rp_free(&rp) }
         let r = fido_credman_get_dev_rp(dev, rp, pin)
@@ -338,12 +342,11 @@ final class FidoSession {
     /// With a PIN, libfido2 first obtains a PIN token, so a wrong PIN fails before any touch
     /// is requested.
     ///
-    /// - Returns: The assertions in WebAuthn form, and the same accounts as credential
-    ///   descriptions for the discovery fallback.
+    /// - Returns: The assertions in WebAuthn form.
     /// - Throws: ``FidoError`` with the CTAP status, e.g. `FIDO_ERR_NO_CREDENTIALS`.
     private func assert(_ dev: OpaquePointer, _ request: Request, rpId: String,
                         _ verification: Verification) throws
-        -> (credentials: [PublicKeyCredential], users: [DiscoveredCredential]) {
+        -> [PublicKeyCredential] {
         var a = fido_assert_new()
         defer { fido_assert_free(&a) }
         try check(fido_assert_set_rp(a, rpId), "Setting the RP ID")
@@ -366,7 +369,6 @@ final class FidoSession {
         }
 
         var credentials: [PublicKeyCredential] = []
-        var users: [DiscoveredCredential] = []
         for i in 0..<fido_assert_count(a) {
             guard let id = Data(fido_assert_id_ptr(a, i), fido_assert_id_len(a, i)),
                   let authData = Data(fido_assert_authdata_raw_ptr(a, i), fido_assert_authdata_raw_len(a, i)),
@@ -378,12 +380,8 @@ final class FidoSession {
                                 authenticatorData: authData.base64URL,
                                 signature: signature.base64URL,
                                 userHandle: userId)))
-            users.append(DiscoveredCredential(
-                id: id.base64URL, rpId: rpId,
-                user: .init(id: userId, name: string(fido_assert_user_name(a, i)),
-                            displayName: string(fido_assert_user_display_name(a, i)))))
         }
-        return (credentials, users)
+        return credentials
     }
 }
 

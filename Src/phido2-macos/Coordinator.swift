@@ -86,14 +86,12 @@ final class Coordinator {
     /// Prints the documents for an assertion that came from a phone.
     ///
     /// A phone exposes neither authenticator details nor credential management, so the
-    /// authenticator document (with `--info`) carries only the transport, and with `--list`
-    /// the only credential that can be reported is the one that signed.
+    /// authenticator document (with `--info`) carries only the transport, and `--list` only
+    /// produces a warning.
     private func emitHybridResult(_ assertion: PublicKeyCredential) {
         if request.info { emit(AuthenticatorInfo(transport: .hybrid)) }
         if request.discover {
-            let credential = DiscoveredCredential(id: assertion.id, rpId: request.rpId ?? "",
-                                                  user: .init(id: assertion.response.userHandle))
-            emit(CredentialsDocument(credentials: [credential], credentialSource: .assertion))
+            logger.warning("A phone cannot list its credentials, so --list is ignored")
         }
         emit(assertion)
     }

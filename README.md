@@ -71,6 +71,8 @@ See the [WebAuthn Hook documentation](Documentation/WebAuthnHook.md) for more in
 It shows prompts that mimic the native macOS sign-in sheet to get a WebAuthn assertion from a USB security key or from a phone that scans a QR code,
 and it can watch a security key or a phone being used by another program, such as Safari.
 
+<img src="Assets/phido2-macos-chooser.png" alt="Screenshot of the phido2 sign-in prompt" width="486">
+
 See the [phido2 for macOS documentation](Documentation/phido2-macos.md) for more information.
 
 ### DSInternals Passkey UI

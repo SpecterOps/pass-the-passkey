@@ -62,7 +62,7 @@ struct Prompt: ParsableCommand {
             help: "How to reach the authenticator: usb (security key), hybrid (phone scans a QR code), or any to choose in the prompt.")
     var transport: TransportOption = .any
 
-    @Flag(name: .shortAndLong, help: "List the key's credentials: with --rpid those of that relying party, without it all credentials on the security key.")
+    @Flag(name: .shortAndLong, help: "List all credentials on the security key, of every relying party.")
     var list = false
 
     @Flag(name: .shortAndLong, help: "Print the authenticator's details: product, AAGUID, CTAP versions, transports, PIN and fingerprint state. Alone, it needs no PIN and no touch.")
