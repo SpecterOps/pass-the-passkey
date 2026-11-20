@@ -286,6 +286,11 @@ struct MonitorEvent {
 /// - A CTAP2 error ends the ceremony only if the key had been waiting for the user (a
 ///   keepalive with status "user presence needed"). Errors without that are the answers to a
 ///   browser's silent checks, e.g. one "no credentials" per entry of an allow list.
+/// - Even after such a wait, "PIN required" and its relatives do not end it: the browser
+///   sent the request without a PIN to have the key touched, and asks for the PIN next.
+/// - With several keys attached, the browser asks all of them and cancels the rest once one
+///   is touched. A cancelled request ends the ceremony only if no key was picked and none is
+///   still waiting.
 /// - An assertion without the user-present flag is such a silent check that found a match.
 /// - A registration for the relying party `.dummy` is not a real one: browsers send it to
 ///   wait for a touch before they report that no credential matched, or that the credential
@@ -295,17 +300,24 @@ struct MonitorEvent {
 /// - U2F has no keepalives; a browser polls until the key is touched. When the polling just
 ///   stops, ``idleExpired()`` reports the request as abandoned.
 struct CeremonyTracker {
+    /// Errors a key gives after a touch when the request carried no PIN or a placeholder one.
+    static let pinStepErrors: Set<Int32> = [FIDO_ERR_PIN_REQUIRED, FIDO_ERR_PIN_INVALID, FIDO_ERR_PIN_NOT_SET, FIDO_ERR_PIN_AUTH_INVALID]
+
     /// SHA-256 of `.dummy`, the relying party of browsers' placeholder registrations.
     static let dummyRpIdHash = Data(".dummy".utf8).sha256
 
     /// Whether a U2F request is being polled, so that silence means it was given up.
     private(set) var pollingU2f = false
-    private var userPresenceNeeded = false
+    /// The security keys that are waiting for their user right now.
+    private var waiting: Set<AnyHashable> = []
+    /// The key the user picked by touching it, once one has been picked.
+    private var chosen: AnyHashable?
     private var noCredentialsSeen = false
     private var silentMatchSeen = false
     /// Identifies the last line of a kind that repeats many times a second.
     private var repeatKey: String?
-    private var lastInfo: Data?
+    /// The authenticator documents already printed, one per security key.
+    private var printedInfo: Set<Data> = []
 
     /// Handles one message.
     ///
@@ -314,10 +326,10 @@ struct CeremonyTracker {
     ///   - manufacturer: The device's USB manufacturer string, for the authenticator document.
     ///   - product: The device's USB product string.
     /// - Returns: What to report; empty for repeats of the previous polling answer.
-    mutating func observe(_ message: CtapHidMessage, manufacturer: String? = nil, product: String? = nil) -> [MonitorEvent] {
+    mutating func observe(_ message: CtapHidMessage, from device: AnyHashable = 0, manufacturer: String? = nil, product: String? = nil) -> [MonitorEvent] {
         switch message.command {
-        case CtapHidCommand.keepalive: return keepalive(message.payload.first ?? 0)
-        case CtapHidCommand.cbor: return ctap2(Ctap2Response(message.payload), manufacturer, product)
+        case CtapHidCommand.keepalive: return keepalive(message.payload.first ?? 0, device)
+        case CtapHidCommand.cbor: return ctap2(Ctap2Response(message.payload), device, manufacturer, product)
         case CtapHidCommand.msg: return u2f(U2fResponse(message.payload))
         case CtapHidCommand.initialize:
             return [MonitorEvent(severity: .debug, message: "A program opened a channel to the security key")]
@@ -333,9 +345,9 @@ struct CeremonyTracker {
     /// Forgets what was inferred about the ceremony that just ended, so that the next one is
     /// judged on its own. The authenticator details already printed are remembered.
     mutating func startNextCeremony() {
-        let printedInfo = lastInfo
+        let printed = printedInfo
         self = CeremonyTracker()
-        lastInfo = printedInfo
+        printedInfo = printed
     }
 
     /// Call when a polled U2F request has had no answer for a few seconds.
@@ -351,19 +363,18 @@ struct CeremonyTracker {
 
     // MARK: CTAP2
 
-    private mutating func keepalive(_ status: UInt8) -> [MonitorEvent] {
+    private mutating func keepalive(_ status: UInt8, _ device: AnyHashable) -> [MonitorEvent] {
         // 1: processing, 2: user presence needed.
-        if status == 2 { userPresenceNeeded = true }
+        if status == 2 { waiting.insert(device) }
         guard isNew("keepalive-\(status)") else { return [] }
         return [status == 2
             ? MonitorEvent(message: "The security key is waiting for the user (touch or fingerprint)")
             : MonitorEvent(severity: .debug, message: "The security key is processing a request")]
     }
 
-    private mutating func ctap2(_ response: Ctap2Response, _ manufacturer: String?, _ product: String?) -> [MonitorEvent] {
+    private mutating func ctap2(_ response: Ctap2Response, _ device: AnyHashable, _ manufacturer: String?, _ product: String?) -> [MonitorEvent] {
         // A response ends the request the keepalives belonged to.
-        let wasWaiting = userPresenceNeeded
-        userPresenceNeeded = false
+        let wasWaiting = waiting.remove(device) != nil
         if case .error = response {} else { repeatKey = nil }
 
         switch response {
@@ -373,11 +384,12 @@ struct CeremonyTracker {
                 aaguid: aaguid.flatMap(formatAAGUID), versions: versions, transports: transports,
                 pinSet: options["clientPin"], builtInUserVerification: options["uv"])
             // Browsers ask for this several times per ceremony; print it once.
-            let encoded = try? JSONEncoder().encode(document)
-            guard encoded != lastInfo else {
+            // Sorted keys, so that equal documents encode to equal bytes.
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .sortedKeys
+            guard let encoded = try? encoder.encode(document), printedInfo.insert(encoded).inserted else {
                 return [MonitorEvent(severity: .debug, message: "authenticatorGetInfo response (unchanged)")]
             }
-            lastInfo = encoded
             return [MonitorEvent(message: "authenticatorGetInfo response: \(versions.joined(separator: ", "))", document: document)]
 
         case .assertion(let assertion):
@@ -441,6 +453,22 @@ struct CeremonyTracker {
         case .error(let code):
             let name = String(cString: fido_strerr(Int32(code))) + " (0x" + String(code, radix: 16) + ")"
             if code == UInt8(FIDO_ERR_NO_CREDENTIALS) { noCredentialsSeen = true }
+            if wasWaiting, Self.pinStepErrors.contains(Int32(code)) {
+                // With a PIN-protected key, a browser first sends a request without a PIN.
+                // The key waits for a touch, which also tells the browser which of several
+                // keys the user picked, and then answers with one of these errors. The
+                // browser goes on to ask for the PIN; nothing has failed.
+                chosen = device
+                repeatKey = nil
+                return [MonitorEvent(message: "The security key was touched and wants a PIN (\(name)); the ceremony goes on")]
+            }
+            if wasWaiting, code == UInt8(FIDO_ERR_KEEPALIVE_CANCEL), (chosen != nil && chosen != device) || !waiting.isEmpty {
+                // A browser asks every attached key and cancels the others once the user
+                // has touched one. Only when no key is left waiting and none was picked did
+                // the user cancel the ceremony itself.
+                repeatKey = nil
+                return [MonitorEvent(message: "The request to this security key was cancelled; another key is in use")]
+            }
             // A mismatched fingerprint is retried by the browser within the same ceremony.
             if wasWaiting && code != UInt8(FIDO_ERR_UV_INVALID) {
                 repeatKey = nil
@@ -531,6 +559,10 @@ struct CeremonyTracker {
 /// - Returns: `nil` if `aaguid` is not 16 bytes long.
 func formatAAGUID(_ aaguid: Data) -> String? {
     guard aaguid.count == 16 else { return nil }
-    return aaguid.withUnsafeBytes { NSUUID(uuidBytes: $0.bindMemory(to: UInt8.self).baseAddress) }
-        .uuidString.lowercased()
+    // Written out by hand: NSUUID's initialiser takes a non-optional pointer on Linux, and its
+    // formatting is not the same on every platform.
+    let hex = aaguid.map { String(format: "%02x", $0) }
+    return [hex[0..<4], hex[4..<6], hex[6..<8], hex[8..<10], hex[10..<16]]
+        .map { $0.joined() }
+        .joined(separator: "-")
 }

@@ -257,6 +257,8 @@ Deciding that a ceremony is over is partly inference:
 | U2F registration answer after a CTAP2 "no credentials" | Assertion failed: the same placeholder, sent after the browser fell back to U2F. |
 | Error after the key waited for the user | Ceremony failed; the error does not say whether it was an assertion or a registration. |
 | Error without such a wait | The answer to a silent check; monitoring continues. |
+| "PIN required" (or a related PIN error) after the key waited for the user | A step, not a failure: the browser had the key touched first and asks for the PIN next; monitoring continues. |
+| Cancelled request while another key was picked or is still waiting | The browser asked several keys and dropped this one; monitoring continues. |
 | U2F polling that stops for 3 seconds | Ceremony failed (cancelled or timed out). |
 
 Verified with Safari on macOS 26.6 and on Ubuntu 26.04 LTS. Browsers with

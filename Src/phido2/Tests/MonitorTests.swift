@@ -1,3 +1,4 @@
+import CFido2
 import Foundation
 import Testing
 @testable import phido2
@@ -369,5 +370,62 @@ struct RelyingPartyTests {
         #expect(known.last?.outcome == nil)
         let unknown = observe(rpIdHash: Data(repeating: 0xab, count: 32))
         #expect(unknown.last?.message.contains("not among") == true)
+    }
+}
+
+/// Tests for ceremonies in which the browser talks to more than one request or key before
+/// the real answer arrives.
+@Suite("Ceremonies with a PIN step or several keys")
+struct MultiStepCeremonyTests {
+    private static let waiting = CtapHidMessage(channel: 1, command: CtapHidCommand.keepalive, payload: Data([0x02]))
+    private static func error(_ code: Int32) -> CtapHidMessage {
+        CtapHidMessage(channel: 1, command: CtapHidCommand.cbor, payload: Data([UInt8(code)]))
+    }
+
+    /// Checks that "PIN required" after a touch does not end the ceremony.
+    ///
+    /// This is what a PIN-protected key answers when Safari first sends the request without
+    /// a PIN: the key blinks, the user touches it, the key says a PIN is required, and Safari
+    /// then asks for the PIN and sends the real request. The monitor used to stop here.
+    @Test("PIN required after a touch is a step of the ceremony, not its failure")
+    func pinRequiredIsNotAnOutcome() {
+        var tracker = CeremonyTracker()
+        _ = tracker.observe(Self.waiting)
+        let events = tracker.observe(Self.error(FIDO_ERR_PIN_REQUIRED))
+        #expect(events.count == 1)
+        #expect(events.first?.outcome == nil)
+        // A later failure after another wait still ends it.
+        _ = tracker.observe(Self.waiting)
+        #expect(tracker.observe(Self.error(FIDO_ERR_OPERATION_DENIED)).first?.outcome?.succeeded == false)
+    }
+
+    /// Checks two keys: the one that is not touched gets cancelled, which is not a failure.
+    ///
+    /// Both keys wait. Key B is touched and asks for its PIN; the browser cancels key A.
+    /// Neither event ends the ceremony.
+    @Test("with two keys, cancelling the one that was not picked does not end the ceremony")
+    func cancelledOtherKeyIsNotAnOutcome() {
+        var tracker = CeremonyTracker()
+        _ = tracker.observe(Self.waiting, from: "A")
+        _ = tracker.observe(Self.waiting, from: "B")
+        #expect(tracker.observe(Self.error(FIDO_ERR_PIN_REQUIRED), from: "B").first?.outcome == nil)
+        #expect(tracker.observe(Self.error(FIDO_ERR_KEEPALIVE_CANCEL), from: "A").first?.outcome == nil)
+    }
+
+    /// Checks that cancelling in the browser still ends the ceremony, with one key or two.
+    ///
+    /// With two keys both requests are cancelled: the first cancel leaves a key waiting and
+    /// decides nothing, the second leaves none and no key was picked, so the user gave up.
+    @Test("a cancel with no key picked and none left waiting ends the ceremony")
+    func cancelByTheUserIsAnOutcome() {
+        var single = CeremonyTracker()
+        _ = single.observe(Self.waiting)
+        #expect(single.observe(Self.error(FIDO_ERR_KEEPALIVE_CANCEL)).first?.outcome?.succeeded == false)
+
+        var double = CeremonyTracker()
+        _ = double.observe(Self.waiting, from: "A")
+        _ = double.observe(Self.waiting, from: "B")
+        #expect(double.observe(Self.error(FIDO_ERR_KEEPALIVE_CANCEL), from: "A").first?.outcome == nil)
+        #expect(double.observe(Self.error(FIDO_ERR_KEEPALIVE_CANCEL), from: "B").first?.outcome?.succeeded == false)
     }
 }

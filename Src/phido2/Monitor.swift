@@ -98,7 +98,7 @@ final class MonitorSession {
     func received(_ packet: Data, from device: AnyHashable, manufacturer: String?, product: String?) {
         lastReport = Date()
         guard let message = reassemblers[device, default: CtapHidReassembler()].add(packet) else { return }
-        for event in tracker.observe(message, manufacturer: manufacturer, product: product) {
+        for event in tracker.observe(message, from: device, manufacturer: manufacturer, product: product) {
             report(event)
         }
     }
