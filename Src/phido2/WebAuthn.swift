@@ -1,9 +1,23 @@
+import CFido2
 import Foundation
 
 extension Data {
     /// The base64url encoding of the data, without padding (RFC 4648 §5).
+    ///
+    /// Written out by hand: Foundation's own base64url option exists only on recent Apple
+    /// systems, not on Linux.
     var base64URL: String {
-        base64EncodedString(options: [.base64URLAlphabet, .omitPaddingCharacter])
+        base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    /// The SHA-256 hash of the data, computed by libcrypto.
+    var sha256: Data {
+        var digest = [UInt8](repeating: 0, count: Int(SHA256_DIGEST_LENGTH))
+        withUnsafeBytes { _ = SHA256($0.bindMemory(to: UInt8.self).baseAddress, $0.count, &digest) }
+        return Data(digest)
     }
 
     /// Decodes base64url or standard base64 text, with or without padding.

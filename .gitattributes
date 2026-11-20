@@ -6,7 +6,8 @@ Package.resolved linguist-generated=true
 *.cxf linguist-language=JSON
 *.config linguist-language=XML
 
-# The phido2 tools are built with make and shell tools, which need LF line endings
-# even in a Windows checkout.
+# phido2 is built with make and shell tools, which need LF line endings even in a
+# Windows checkout.
 Makefile text eol=lf
-Src/phido2-*/** text eol=lf
+Src/phido2/** text eol=lf
+Src/phido2/**/*.png binary

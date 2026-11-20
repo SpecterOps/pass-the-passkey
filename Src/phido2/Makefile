@@ -1,25 +1,38 @@
-# Builds phido2 for macOS: one self-contained, ad-hoc signed executable.
+# Builds phido2 for the operating system this runs on: one executable, `phido2`.
 #
-#   make            build and sign the release binary
+#   make            build the release binary (and ad-hoc sign it on macOS)
 #   make test       run the unit tests
 #   make clean      remove build products (keeps the prepared dependencies)
 #   make distclean  also remove the prepared dependencies
 #
 # Nothing is written into this folder. Everything goes to the repository's Build folder,
-# next to the output of the .NET projects:
+# next to the output of the .NET projects, under the platform's name (phido2-macos or
+# phido2-linux):
 #
-#   Build/bin/phido2-macos/release/   the final executable
-#   Build/obj/phido2-macos/swiftpm/   SwiftPM's intermediate files
-#   Build/obj/phido2-macos/deps/      headers and static libraries prepared by this Makefile
+#   Build/bin/phido2-<os>/release/   the final executable
+#   Build/obj/phido2-<os>/swiftpm/   SwiftPM's intermediate files
+#   Build/obj/phido2-macos/deps/     macOS only: headers and static libraries prepared here
 #
-# VS Code's Swift extension builds for its own purposes into Build/obj/phido2-macos/vscode
+# VS Code's Swift extension builds for its own purposes into Build/obj/phido2/vscode
 # (see .vscode/settings.json). It must not share SwiftPM's folder with this Makefile: two
 # builds in one folder overwrite each other's files.
 #
-# Needs Homebrew's libfido2 (`brew install libfido2`) and the Xcode Command Line Tools.
+# macOS needs Homebrew's libfido2 (`brew install libfido2`) and the Xcode Command Line
+# Tools. libfido2, libcbor and libcrypto are linked statically, so the executable depends
+# only on the system.
+#
+# Linux needs a Swift toolchain and the development packages of libfido2, libcbor, OpenSSL
+# and GTK 3 (see Documentation/phido2.md). Those libraries are linked dynamically, as they
+# are part of a desktop installation; the Swift runtime is linked statically, so the
+# executable needs nothing that a stock desktop does not have.
 
 PRODUCT := phido2
+OS      := $(shell uname -s)
+ifeq ($(OS),Darwin)
 PROJECT := phido2-macos
+else
+PROJECT := phido2-linux
+endif
 
 # Absolute, so that the paths mean the same to make, SwiftPM and the linker.
 HERE    := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
@@ -27,10 +40,42 @@ BUILD   := $(abspath $(HERE)/../../Build)
 BIN     := $(BUILD)/bin/$(PROJECT)/release
 OBJ     := $(BUILD)/obj/$(PROJECT)
 SCRATCH := $(OBJ)/swiftpm
-# Must match `deps` in Package.swift.
-DEPS    := $(OBJ)/deps
 
 SWIFT_FLAGS := --package-path $(HERE) --scratch-path $(SCRATCH)
+
+.DEFAULT_GOAL := all
+.PHONY: all deps test clean distclean
+
+clean:
+	rm -rf $(SCRATCH) $(BUILD)/bin/$(PROJECT)
+
+distclean: clean
+	rm -rf $(OBJ)
+
+ifneq ($(OS),Darwin)
+# --- Linux ------------------------------------------------------------------
+
+# The Swift runtime and Foundation go into the executable; -s strips the symbols, which
+# otherwise make up most of its size.
+RELEASE_FLAGS := -c release --static-swift-stdlib -Xlinker -s
+
+all:
+	swift build $(SWIFT_FLAGS) $(RELEASE_FLAGS)
+	mkdir -p $(BIN)
+	cp -f "$$(swift build $(SWIFT_FLAGS) $(RELEASE_FLAGS) --show-bin-path)/$(PRODUCT)" $(BIN)/$(PRODUCT)
+	@echo "Built $(BIN)/$(PRODUCT)"
+
+test:
+	swift test $(SWIFT_FLAGS)
+
+# Nothing to prepare: the libraries come from the distribution's packages.
+deps:
+
+else
+# --- macOS ------------------------------------------------------------------
+
+# Must match `deps` in Package.swift.
+DEPS    := $(OBJ)/deps
 
 # With only the Command Line Tools selected (no Xcode), SwiftPM does not find the
 # Swift Testing framework by itself.
@@ -54,8 +99,6 @@ endif
 CBOR_SRC := $(DEPS)/src/libcbor-$(CBOR_VERSION)
 CBOR_OBJ := $(DEPS)/src/cbor-obj
 
-.PHONY: all deps test clean distclean
-
 all: deps
 	swift build $(SWIFT_FLAGS) -c release
 	mkdir -p $(BIN)
@@ -66,13 +109,7 @@ all: deps
 test: deps
 	swift test $(SWIFT_FLAGS) $(TEST_FLAGS)
 
-clean:
-	rm -rf $(SCRATCH) $(BUILD)/bin/$(PROJECT)
-
-distclean: clean
-	rm -rf $(OBJ)
-
-# --- Dependencies -----------------------------------------------------------
+# --- Dependencies (macOS) ---------------------------------------------------
 # $(DEPS)/lib holds static archives only, so the linker cannot pick a dylib and
 # the executable ends up with no non-system dynamic dependencies.
 # SwiftPM does not track these archives, so each rule also deletes the linked
@@ -114,3 +151,5 @@ $(DEPS)/lib/libcbor.a: $(CBOR_SRC)/.extracted
 	done
 	ar rcs $@ $(CBOR_OBJ)/*.o
 	@rm -f $(SCRATCH)/release/$(PRODUCT)
+
+endif

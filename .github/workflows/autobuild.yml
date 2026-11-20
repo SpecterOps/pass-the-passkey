@@ -146,3 +146,59 @@ jobs:
         name: phido2-macos-arm64
         path: phido2-macos-arm64.tar.gz
         if-no-files-found: error
+
+  build-linux:
+    name: 'Build Linux (${{ matrix.arch }})'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - arch: amd64
+          runner: ubuntu-24.04
+        - arch: arm64
+          runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    # The official Swift image; the runners themselves have no Swift toolchain of this version.
+    container: swift:6.2-noble
+    timeout-minutes: 30
+    env:
+      BINARY: Build/bin/phido2-linux/release/phido2
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v6
+
+    - name: Install Development Packages
+      run: |
+        apt-get update
+        apt-get install --yes --no-install-recommends make pkg-config \
+          libfido2-dev libcbor-dev libssl-dev libgtk-3-dev
+
+    - name: Run Unit Tests
+      run: make test
+
+    - name: Build
+      run: make
+
+    - name: Verify the Binary
+      run: |
+        ldd "$BINARY"
+        # The Swift runtime must be inside the executable: a stock desktop does not have it.
+        if ldd "$BINARY" | grep -E 'libswift|libFoundation|libdispatch|libBlocksRuntime|not found'; then
+          echo "::error::phido2 depends on libraries a stock desktop does not have"
+          exit 1
+        fi
+        ls -l "$BINARY"
+        "$BINARY" --help
+        "$BINARY" prompt --help
+        "$BINARY" monitor --help
+
+    # A tarball keeps the executable bit, which artifact zips drop.
+    - name: Package
+      run: tar -czf phido2-linux-${{ matrix.arch }}.tar.gz -C "$(dirname "$BINARY")" phido2
+
+    - name: Upload phido2 as Artifact
+      uses: actions/upload-artifact@v6
+      with:
+        name: phido2-linux-${{ matrix.arch }}
+        path: phido2-linux-${{ matrix.arch }}.tar.gz
+        if-no-files-found: error

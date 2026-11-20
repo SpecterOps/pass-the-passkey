@@ -34,6 +34,26 @@ struct Request {
     /// is needed and the result has the UV flag unset. Listing credentials still verifies the
     /// user, because credential management cannot work without it.
     var skipUserVerification = false
+    /// Whether to request the assertion without user presence, so that the key answers
+    /// without a touch. Keys may refuse this for discoverable credentials.
+    var skipUserPresence = false
+    /// Whether to start again instead of giving up when the user cancels or the key times
+    /// out, for repeated troubleshooting. It never uses up the last PIN attempt.
+    var flood = false
+}
+
+/// What has already been done for a request, kept across the sessions that flood mode starts
+/// one after another, so that a new session does not repeat it: the key's details and the
+/// credential list are printed once, and a PIN the key has accepted is not asked for again.
+///
+/// Used only by the session that has the security key open, so by one thread at a time.
+final class SessionProgress {
+    /// Whether the authenticator's details have been printed.
+    var infoEmitted = false
+    /// Whether the credential list has been printed, or found to be unavailable.
+    var credentialsEmitted = false
+    /// A PIN that the security key accepted.
+    var acceptedPIN: String?
 }
 
 /// What a ``FidoSession`` needs from the user interface.
@@ -48,14 +68,17 @@ protocol SessionUI: AnyObject {
 
     /// Asks the user for the key's PIN and blocks until they submit one.
     ///
-    /// - Parameter incorrect: `true` when the previous PIN was rejected.
+    /// - Parameters:
+    ///   - incorrect: `true` when the previous PIN was rejected.
+    ///   - retries: How many attempts the key still allows, if it said so.
     /// - Returns: The PIN the user entered, or `nil` if the user went back instead.
-    func requestPIN(incorrect: Bool) -> String?
+    func requestPIN(incorrect: Bool, retries: Int?) -> String?
 }
 
 /// Runs an assertion ceremony against the first FIDO HID device, using libfido2.
 ///
-/// libfido2 reaches the key through IOKit's IOHIDManager, which needs no entitlement.
+/// libfido2 reaches the key through IOKit's IOHIDManager on macOS and through hidraw on
+/// Linux; neither needs special rights.
 /// Its calls block (device polling, waiting for touch), so ``run(_:ui:)`` must not be called
 /// on the main thread.
 final class FidoSession {
@@ -85,11 +108,19 @@ final class FidoSession {
         var product: String?
     }
 
+    /// Held by the session that has the security key open.
+    private static let deviceGate = NSLock()
+
     private let lock = NSLock()
     private var device: OpaquePointer?
     private var cancelled = false
-    /// Whether the credential list has been printed (worker thread only).
-    private var credentialsEmitted = false
+    private let progress: SessionProgress
+
+    /// - Parameter progress: What earlier sessions for the same request have already done.
+    ///   A session that is the only one for its request needs none.
+    init(progress: SessionProgress = SessionProgress()) {
+        self.progress = progress
+    }
 
     /// Whether ``cancel()`` has been called.
     var isCancelled: Bool {
@@ -128,6 +159,13 @@ final class FidoSession {
         let found = try waitForDevice()
         logger.info("Using \(found.product ?? "security key") at \(found.path)")
 
+        // One session at a time has the key open. A session that was cancelled lets go of it
+        // a moment later, on its own thread, and the key cannot be opened twice: without this
+        // wait, a session started right after a cancel (flood mode) fails to open it.
+        Self.deviceGate.lock()
+        defer { Self.deviceGate.unlock() }
+        if isCancelled { throw FidoError.cancelled }
+
         guard let dev = fido_dev_new() else { throw FidoError(code: 0, operation: "fido_dev_new failed") }
         defer {
             var d: OpaquePointer? = dev
@@ -147,9 +185,10 @@ final class FidoSession {
         let builtInUV = fido_dev_has_uv(dev)
         var info = AuthenticatorInfo(transport: .usb, manufacturer: found.manufacturer, product: found.product,
                                      pinSet: pinSet, builtInUserVerification: builtInUV)
-        if request.info {
+        if request.info, !progress.infoEmitted {
             readInfo(dev, into: &info)
             emit(info)
+            progress.infoEmitted = true
         }
         // Printing the key's details needs neither the user nor a credential.
         guard request.rpId != nil || request.discover else { return }
@@ -160,12 +199,13 @@ final class FidoSession {
         if request.skipUserVerification && !request.discover {
             if request.pin != nil { logger.warning("User verification is skipped; ignoring --pin") }
             verification = .none
-        } else if pinSet, let pin = request.pin {
+        } else if pinSet, let pin = request.pin ?? progress.acceptedPIN {
+            // Also a PIN that an earlier session of this request asked for and the key accepted.
             verification = .pin(pin)
         } else if builtInUV {
             verification = .builtIn
         } else if pinSet {
-            enteredPIN = try askPIN(ui, incorrect: false)
+            enteredPIN = try askPIN(dev, request, ui, incorrect: false)
             verification = .pin(enteredPIN!)
         } else {
             verification = .none
@@ -173,14 +213,23 @@ final class FidoSession {
 
         while true {
             do {
-                ui.showActivate(afterPIN: enteredPIN != nil)
+                // A session cancelled in the meantime must not start waiting for a touch.
+                if isCancelled { throw FidoError.cancelled }
+                // Without user presence the key answers by itself, unless it still has to
+                // verify the user with its fingerprint sensor.
+                if !request.skipUserPresence || verification.reported == .builtIn {
+                    ui.showActivate(afterPIN: enteredPIN != nil)
+                }
                 return try attempt(dev, request, verification)
+            } catch let error as FidoError where request.flood && error.code == FIDO_ERR_ACTION_TIMEOUT {
+                logger.warning("The security key timed out; flood mode asks again")
             } catch let error as FidoError where error.code == FIDO_ERR_PIN_INVALID {
+                progress.acceptedPIN = nil
                 var retries: Int32 = 0
                 if fido_dev_get_retry_count(dev, &retries) == FIDO_OK {
                     logger.warning("Incorrect PIN, \(retries) attempts left")
                 }
-                enteredPIN = try askPIN(ui, incorrect: true)
+                enteredPIN = try askPIN(dev, request, ui, incorrect: true)
                 verification = .pin(enteredPIN!)
             } catch let error as FidoError where error.code == FIDO_ERR_UV_INVALID && verification.pin == nil {
                 // The fingerprint did not match; the key counts down its own retries.
@@ -192,7 +241,7 @@ final class FidoSession {
                 where pinSet && verification.pin == nil
                 && (error.code == FIDO_ERR_UV_BLOCKED || error.code == FIDO_ERR_PIN_REQUIRED) {
                 logger.warning("Built-in user verification is unavailable (\(error)); falling back to the PIN")
-                enteredPIN = try askPIN(ui, incorrect: false)
+                enteredPIN = try askPIN(dev, request, ui, incorrect: false)
                 verification = .pin(enteredPIN!)
             }
         }
@@ -200,11 +249,25 @@ final class FidoSession {
 
     /// Asks for the PIN through the UI and logs it at once, before the key has checked it.
     ///
-    /// - Throws: ``FidoError/cancelled`` if the user went back instead of entering one.
-    private func askPIN(_ ui: SessionUI, incorrect: Bool) throws -> String {
-        guard let pin = ui.requestPIN(incorrect: incorrect) else { throw FidoError.cancelled }
-        logger.info("PIN entered: \(pin)")
-        return pin
+    /// In flood mode a dismissed PIN prompt is shown again, and nothing is asked once only
+    /// one attempt is left, so that the key can never end up blocked.
+    ///
+    /// - Throws: ``FidoError/cancelled`` if the user went back instead of entering one, or a
+    ///   ``FidoError`` without a code when flood mode stops to keep the last attempt.
+    private func askPIN(_ dev: OpaquePointer, _ request: Request, _ ui: SessionUI, incorrect: Bool) throws -> String {
+        while true {
+            var count: Int32 = 0
+            let retries = fido_dev_get_retry_count(dev, &count) == FIDO_OK ? Int(count) : nil
+            if request.flood, let retries, retries <= 1 {
+                throw FidoError(code: 0, operation: "Flood mode stops here to preserve the last PIN attempt")
+            }
+            if let pin = ui.requestPIN(incorrect: incorrect, retries: retries) {
+                logger.info("PIN entered: \(pin)")
+                return pin
+            }
+            // A session that was cancelled as a whole must not ask again.
+            guard request.flood, !isCancelled else { throw FidoError.cancelled }
+        }
     }
 
     /// Performs discovery (if requested) and the assertion once, with a fixed verification
@@ -224,17 +287,28 @@ final class FidoSession {
             emit(try discoverAll(dev, pin: verification.pin))
             return
         }
-        // A retry after a fingerprint mismatch must not print the list a second time.
-        if request.discover, !credentialsEmitted {
+        // A retry after a fingerprint mismatch, or the next session in flood mode, must not
+        // print the list a second time.
+        if request.discover, !progress.credentialsEmitted {
             if canManage {
                 emit(try discoverAll(dev, pin: verification.pin))
+                // Listing with a PIN proves that the key accepts it.
+                if let pin = verification.pin { progress.acceptedPIN = pin }
             } else {
                 // The assertion is still made; only the list is left out.
                 logger.warning("\(unavailable); --list is ignored")
             }
-            credentialsEmitted = true
+            progress.credentialsEmitted = true
         }
-        try assert(dev, request, rpId: rpId, request.skipUserVerification ? .none : verification).forEach { emit($0) }
+        do {
+            try assert(dev, request, rpId: rpId, request.skipUserVerification ? .none : verification).forEach { emit($0) }
+        } catch let error as FidoError
+            where error.code == FIDO_ERR_KEEPALIVE_CANCEL || error.code == FIDO_ERR_ACTION_TIMEOUT {
+            // The key checks the PIN before it waits for the touch, so a wait that was
+            // cancelled or timed out means the PIN was right.
+            if !request.skipUserVerification, let pin = verification.pin { progress.acceptedPIN = pin }
+            throw error
+        }
     }
 
     /// Polls until a FIDO HID device is attached.
@@ -287,13 +361,14 @@ final class FidoSession {
     ///
     /// The user is verified once: a single token with the credential management permission is
     /// obtained and used for every query. Left to itself, libfido2 would obtain a new one for
-    /// each query, which with a fingerprint means a touch for each relying party.
+    /// each query, which with a fingerprint means a touch for each relying party. That is
+    /// also what happens with a libfido2 too old to hand out tokens; see `CFido2.h`.
     /// - Returns: The credentials of all relying parties; empty if the key holds none.
     /// - Throws: ``FidoError`` if the key rejects the PIN, the verification, or the command.
     private func discoverAll(_ dev: OpaquePointer, pin: String?) throws -> [DiscoveredCredential] {
-        try check(fido_dev_get_puat(dev, UInt32(FIDO_PUAT_CREDMAN), nil, pin), "Verifying the user to list credentials")
+        try check(phido2_get_credman_token(dev, pin), "Verifying the user to list credentials")
         // The token is of no use to the assertion, which needs its own permission.
-        defer { fido_dev_set_puat(dev, nil, 0) }
+        defer { phido2_clear_token(dev) }
         var rp = fido_credman_rp_new()
         defer { fido_credman_rp_free(&rp) }
         let r = fido_credman_get_dev_rp(dev, rp, pin)
@@ -336,7 +411,7 @@ final class FidoSession {
     /// Sends `authenticatorGetAssertion` and blocks until the key is touched.
     ///
     /// No allow list is sent, so only discoverable credentials (passkeys) can answer.
-    /// User presence is always requested, and user verification whenever the key has a PIN or
+    /// User presence is requested unless the request says to skip it, and user verification whenever the key has a PIN or
     /// built-in verification; the resulting UP and UV flags are logged.
     ///
     /// With a PIN, libfido2 first obtains a PIN token, so a wrong PIN fails before any touch
@@ -354,7 +429,8 @@ final class FidoSession {
             try check(fido_assert_set_clientdata(a, $0.bindMemory(to: UInt8.self).baseAddress, $0.count),
                       "Setting the client data")
         }
-        try check(fido_assert_set_up(a, FIDO_OPT_TRUE), "Requesting user presence")
+        try check(fido_assert_set_up(a, request.skipUserPresence ? FIDO_OPT_FALSE : FIDO_OPT_TRUE),
+                  "Setting the user presence option")
         // Ask for user verification whenever the key can do it. With a PIN (or a UV token)
         // libfido2 proves verification through pinUvAuthParam and leaves "uv" out of the
         // options map, as CTAP requires; either way the signed flags come back with UV set.

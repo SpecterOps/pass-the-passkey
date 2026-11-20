@@ -253,7 +253,7 @@ final class SessionPromptBridge: SessionUI {
         }
     }
 
-    func requestPIN(incorrect: Bool) -> String? {
+    func requestPIN(incorrect: Bool, retries: Int?) -> String? {
         DispatchQueue.main.async {
             guard self.active else {
                 self.pinSubmitted.signal()

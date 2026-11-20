@@ -1,5 +1,4 @@
 import CFido2
-import CryptoKit
 import Foundation
 
 // What `monitor` can know comes only from the reports a security key sends to the host: other
@@ -297,7 +296,7 @@ struct MonitorEvent {
 ///   stops, ``idleExpired()`` reports the request as abandoned.
 struct CeremonyTracker {
     /// SHA-256 of `.dummy`, the relying party of browsers' placeholder registrations.
-    static let dummyRpIdHash = Data(SHA256.hash(data: Data(".dummy".utf8)))
+    static let dummyRpIdHash = Data(".dummy".utf8).sha256
 
     /// Whether a U2F request is being polled, so that silence means it was given up.
     private(set) var pollingU2f = false
@@ -394,11 +393,14 @@ struct CeremonyTracker {
             guard data.userPresent else {
                 silentMatchSeen = true
                 return [MonitorEvent(message: "Silent check: the security key has a matching credential (UP=0, nothing signed for the site yet)",
-                                    document: document)]
+                                    document: document),
+                        MonitorEvent(message: KnownRelyingParties.describe(hash: data.rpIdHash))]
             }
             let more = (assertion.numberOfCredentials ?? 1) > 1 ? ", \(assertion.numberOfCredentials!) credentials" : ""
             return [MonitorEvent(message: "Assertion succeeded: UP=1 UV=\(data.userVerified ? 1 : 0) signCount=\(data.signCount)\(more)",
-                                document: document, outcome: CeremonyOutcome(ceremony: .assertion, succeeded: true))]
+                                document: document, outcome: CeremonyOutcome(ceremony: .assertion, succeeded: true)),
+                    // After the document, so that the name follows the hash it explains.
+                    MonitorEvent(message: KnownRelyingParties.describe(hash: data.rpIdHash))]
 
         case .attestation(let format, let data, let raw):
             if data.rpIdHash == Self.dummyRpIdHash {
@@ -421,7 +423,8 @@ struct CeremonyTracker {
                 userPresent: data.userPresent, userVerified: data.userVerified, signCount: data.signCount,
                 authenticatorData: raw.base64URL)
             return [MonitorEvent(message: "Registration succeeded: UP=\(data.userPresent ? 1 : 0) UV=\(data.userVerified ? 1 : 0) attestation format \(format)",
-                                document: document, outcome: CeremonyOutcome(ceremony: .registration, succeeded: true))]
+                                document: document, outcome: CeremonyOutcome(ceremony: .registration, succeeded: true)),
+                    MonitorEvent(message: KnownRelyingParties.describe(hash: data.rpIdHash))]
 
         case .clientPIN(let pinRetries, let uvRetries, let keyAgreement, let token):
             if let pinRetries { return [MonitorEvent(message: "clientPIN response: \(pinRetries) PIN attempts left")] }

@@ -26,12 +26,12 @@
     <File Path=".github/workflows/release.yml" />
     <File Path=".github/workflows/codeql-analysis.yml" />
   </Folder>
-  <!-- Native phido2 tool for macOS (Swift; built with make, not by this solution) -->
-  <Folder Name="/phido2-macos/">
-    <File Path="Src/phido2-macos/Makefile" />
-    <File Path="Src/phido2-macos/Package.swift" />
-    <File Path="Src/phido2-macos/Info.plist" />
-    <File Path="Documentation/phido2-macos.md" />
+  <!-- Native phido2 tool for macOS and Linux (Swift; built with make, not by this solution) -->
+  <Folder Name="/phido2/">
+    <File Path="Src/phido2/Makefile" />
+    <File Path="Src/phido2/Package.swift" />
+    <File Path="Src/phido2/macOS/Info.plist" />
+    <File Path="Documentation/phido2.md" />
   </Folder>
   <Folder Name="/Scripts/">
     <File Path="Src/Scripts/Invoke-EntraPasskeyInjection.ps1" />

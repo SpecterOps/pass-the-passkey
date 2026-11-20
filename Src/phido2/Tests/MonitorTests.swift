@@ -237,6 +237,8 @@ struct MonitorTests {
     }
 }
 
+// The system log is followed on macOS only.
+#if os(macOS)
 /// Tests for how `monitor` reads the system's log messages about hybrid (QR code) sign-ins.
 @Suite("Hybrid log monitoring")
 struct HybridLogTests {
@@ -288,6 +290,7 @@ struct HybridLogTests {
         #expect((try? JSONDecoder().decode(LogEntry.self, from: Data("Filtering the log data using".utf8))) == nil)
     }
 }
+#endif
 
 /// Tests for the argument rules of the `prompt` subcommand that the option types cannot express.
 @Suite("prompt arguments")
@@ -310,5 +313,61 @@ struct PromptArgumentTests {
         #expect(throws: (any Error).self) { try Prompt.parse(["-i", "--challenge", "AAEC"]) }
         #expect(throws: (any Error).self) { try Prompt.parse(["-l", "--skip-user-verification"]) }
         #expect(throws: (any Error).self) { try Prompt.parse(["-i", "--transport", "hybrid"]) }
+    }
+
+    /// Checks the rules of `--skip-user-presence` and `--flood`.
+    ///
+    /// Skipping user presence is a property of an assertion made by a security key, so it
+    /// needs `--rpid` and cannot be combined with a phone. `--flood` only changes what
+    /// happens after a cancel, so it is accepted with anything.
+    @Test("--skip-user-presence needs --rpid and a security key; --flood goes with anything")
+    func presenceAndFloodOptions() throws {
+        let skipped = try Prompt.parse(["-r", "example.com", "--skip-user-presence", "--flood"])
+        #expect(skipped.skipUserPresence)
+        #expect(skipped.flood)
+        _ = try Prompt.parse(["-l", "--flood"])
+        #expect(try Prompt.parse(["-l", "-f"]).flood)
+        #expect(throws: (any Error).self) { try Prompt.parse(["-l", "--skip-user-presence"]) }
+        #expect(throws: (any Error).self) {
+            try Prompt.parse(["-r", "example.com", "--transport", "hybrid", "--skip-user-presence"])
+        }
+    }
+}
+
+/// Tests for naming the relying party behind an `rpIdHash` (`RelyingParties.swift`).
+@Suite("Known relying parties")
+struct RelyingPartyTests {
+    /// Checks the lookup against a hash that was not computed by this code.
+    ///
+    /// A security key signing in to webauthn.io reports an `rpIdHash` that starts with
+    /// `74 a6 ea 92`, as captured from a real key. The list must turn that hash back into
+    /// the name, and must say nothing for a hash of a site it does not know.
+    @Test("a known site's hash gives its ID; an unknown hash gives none")
+    func looksUpByHash() {
+        let hash = Data("webauthn.io".utf8).sha256
+        #expect(hash.prefix(4) == Data([0x74, 0xa6, 0xea, 0x92]))
+        #expect(KnownRelyingParties.id(forHash: hash) == "webauthn.io")
+        #expect(KnownRelyingParties.id(forHash: Data(repeating: 0xab, count: 32)) == nil)
+    }
+
+    /// Checks that the monitor names the relying party right after an assertion.
+    ///
+    /// The assertion event carries the JSON document and the outcome; the event after it
+    /// is the extra log line, with the site's name when the hash is known and a plain
+    /// statement that it is not when it is unknown.
+    @Test("an observed assertion is followed by a line naming the relying party")
+    func assertionIsFollowedByRelyingParty() {
+        func observe(rpIdHash: Data) -> [MonitorEvent] {
+            let payload: [UInt8] = [0x00, 0xa2, 0x02, 0x58, 37] + [UInt8](rpIdHash) + [0x01, 0, 0, 0, 5] + [0x03, 0x41, 0x00]
+            var tracker = CeremonyTracker()
+            return tracker.observe(CtapHidMessage(channel: 1, command: CtapHidCommand.cbor, payload: Data(payload)))
+        }
+        let known = observe(rpIdHash: Data("github.com".utf8).sha256)
+        #expect(known.count == 2)
+        #expect(known.first?.outcome?.succeeded == true)
+        #expect(known.last?.message.contains("github.com") == true)
+        #expect(known.last?.outcome == nil)
+        let unknown = observe(rpIdHash: Data(repeating: 0xab, count: 32))
+        #expect(unknown.last?.message.contains("not among") == true)
     }
 }

@@ -52,6 +52,51 @@ jobs:
         path: phido2-macos-arm64.tar.gz
         if-no-files-found: error
 
+  build-linux:
+    name: 'Build Linux (${{ matrix.arch }})'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - arch: amd64
+          runner: ubuntu-24.04
+        - arch: arm64
+          runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    # The official Swift image; the runners themselves have no Swift toolchain of this version.
+    container: swift:6.2-noble
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      BINARY: Build/bin/phido2-linux/release/phido2
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v6
+
+    - name: Install Development Packages
+      run: |
+        apt-get update
+        apt-get install --yes --no-install-recommends make pkg-config \
+          libfido2-dev libcbor-dev libssl-dev libgtk-3-dev
+
+    - name: Run Unit Tests
+      run: make test
+
+    - name: Build
+      run: make
+
+    # A tarball keeps the executable bit, which artifact zips drop.
+    - name: Package
+      run: tar -czf phido2-linux-${{ matrix.arch }}.tar.gz -C "$(dirname "$BINARY")" phido2
+
+    - name: Upload phido2 as Artifact
+      uses: actions/upload-artifact@v6
+      with:
+        name: release-assets-linux-${{ matrix.arch }}
+        path: phido2-linux-${{ matrix.arch }}.tar.gz
+        if-no-files-found: error
+
   build-windows:
     name: 'Build Windows'
     runs-on: windows-2025-vs2026
@@ -150,7 +195,7 @@ jobs:
   release:
     name: 'Create Release'
     # Runs only if both builds succeeded, so a release never lacks a platform.
-    needs: [build-windows, build-macos]
+    needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

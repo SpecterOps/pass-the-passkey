@@ -1,0 +1,31 @@
+Copyright 2022 The Chromium Authors.
+BSD-3-Clause; see LICENSE in this directory.
+
+Unmodified vector assets from Chromium commit:
+6a7d1268577562e773c3866806abb3a2e098c46c
+https://github.com/chromium/chromium/tree/6a7d1268577562e773c3866806abb3a2e098c46c/chrome/app/vector_icons/webauthn
+
+passkey_usb_custom.icon
+SHA256: 471f8b2d8b53100b2193f6598d28d56946c3f681f7fd24dda22112e3b6f6082c
+passkey_usb_dark_custom.icon
+SHA256: ffabd0f4e736fe121cdcc73c0fd179fbdab56325b2d161f7193fa5a1d54b5f0e
+
+product_logo_64.png (chrome/app/theme/chromium/product_logo_64.png)
+SHA256: aa7f129dcfe02276ebd365781c6a0c3c8ab1ca41abf3408ca47e604e7fe12018
+product_logo_128.png (chrome/app/theme/chromium/product_logo_128.png)
+SHA256: ea2d5a7c15ae1e03138d2bb227d3ed4684808c7de10a1443d776cde3ca3dcd9d
+
+The product_logo images are the unbranded Chromium logo (not the Google
+Chrome trademarked logo); they are used as the prompt's window and taskbar
+icon so that it groups with Chromium during troubleshooting.
+
+The .icon files are the illustration Chromium shows in its own security key
+PIN and touch prompts. passkey_usb.png and passkey_usb_dark.png are those two
+files rendered at their native size of 316 x 112 pixels; they are derived
+works under the same licence.
+
+The Linux prompt embeds the four PNG files: the Swift Package Manager compiles
+them into the executable (the embedInCode resources in ../../Package.swift),
+so the tool is a single file without resource files next to it.
+
+The dialogs are phido2 windows, not Chromium windows.

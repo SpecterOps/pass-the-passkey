@@ -12,11 +12,11 @@
       "type": "swift",
       "request": "launch",
       "args": [],
-      "cwd": "${workspaceFolder:pass-the-passkey}/Src/phido2-macos",
+      "cwd": "${workspaceFolder:pass-the-passkey}/Src/phido2",
       "name": "Swift: phido2",
       "target": "phido2",
       "configuration": "debug",
-      "preLaunchTask": "swift: Build Debug phido2 (Src/phido2-macos)"
+      "preLaunchTask": "swift: Build Debug phido2 (Src/phido2)"
     }
   ]
 }

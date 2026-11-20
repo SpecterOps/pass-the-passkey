@@ -1,4 +1,3 @@
-import AppKit
 import ArgumentParser
 import CFido2
 import Foundation
@@ -9,17 +8,9 @@ enum TransportOption: String, ExpressibleByArgument, CaseIterable {
     case usb
     /// A phone scanning a QR code; the chooser is skipped.
     case hybrid
-    /// Let the user choose in the prompt.
+    /// Let the user choose in the prompt. On Linux, where only USB is available, the same
+    /// as ``usb``.
     case any
-
-    /// The method to start with, or `nil` to show the chooser.
-    var method: SignInMethod? {
-        switch self {
-        case .usb: .securityKey
-        case .hybrid: .qrCode
-        case .any: nil
-        }
-    }
 }
 
 /// The command-line entry point. It has no options of its own; the work is done by the
@@ -38,10 +29,11 @@ struct Phido2: ParsableCommand {
 struct Prompt: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "prompt",
-        abstract: "Gets a WebAuthn assertion from a USB security key or a phone, without AuthenticationServices.",
+        abstract: "Gets a WebAuthn assertion from a USB security key or, on macOS, a phone.",
         discussion: """
-            Shows macOS-style sign-in prompts: a security key is reached over USB HID with CTAP2, \
-            a phone by scanning a QR code (hybrid transport). At least one of --rpid, --list and \
+            Shows sign-in prompts in the style of the system (macOS) or of Chromium (Linux): a \
+            security key is reached over USB HID with CTAP2, a phone by scanning a QR code \
+            (hybrid transport, macOS only). At least one of --rpid, --list and \
             --info is required; they can be combined freely. Each result is printed on stdout as \
             a JSON document: the authenticator's details (--info), the credentials found \
             (--list) and the assertion(s) (--rpid). Diagnostics go to stderr.
@@ -59,7 +51,7 @@ struct Prompt: ParsableCommand {
     var pin: String?
 
     @Option(name: .shortAndLong,
-            help: "How to reach the authenticator: usb (security key), hybrid (phone scans a QR code), or any to choose in the prompt.")
+            help: "How to reach the authenticator: usb (security key), hybrid (phone scans a QR code, macOS only), or any to choose in the prompt.")
     var transport: TransportOption = .any
 
     @Flag(name: .shortAndLong, help: "List all credentials on the security key, of every relying party.")
@@ -72,6 +64,14 @@ struct Prompt: ParsableCommand {
           help: "Do not request user verification for the assertion: no PIN or fingerprint, only a touch. The result has the UV flag unset.")
     var skipUserVerification = false
 
+    @Flag(name: .customLong("skip-user-presence"),
+          help: "Request the assertion without user presence, so that the security key answers without a touch. The result has the UP flag unset. Keys may refuse this.")
+    var skipUserPresence = false
+
+    @Flag(name: .shortAndLong,
+          help: "Start again instead of exiting when the prompt is cancelled or the security key times out, until interrupted. Stops before the last PIN attempt, so the key is never blocked.")
+    var flood = false
+
     @Flag(name: .shortAndLong, help: "Print debug-level messages and libfido2's CTAP/HID trace to stderr.")
     var debug = false
 
@@ -83,7 +83,18 @@ struct Prompt: ParsableCommand {
         guard rpId != nil || list || info else {
             throw ValidationError("Nothing to do. Give at least one of --rpid, --list and --info.")
         }
+        #if !os(macOS)
+        if transport == .hybrid {
+            throw ValidationError("--transport hybrid is available on macOS only; here only a USB security key can be used.")
+        }
+        #endif
+        if transport == .hybrid && skipUserPresence {
+            throw ValidationError("--skip-user-presence applies to USB security keys, not to --transport hybrid: a phone always asks its user.")
+        }
         guard rpId == nil else { return }
+        if skipUserPresence {
+            throw ValidationError("--skip-user-presence applies to assertions and needs --rpid.")
+        }
         if skipUserVerification {
             throw ValidationError("--skip-user-verification applies to assertions and needs --rpid; listing credentials always requires verification.")
         }
@@ -93,13 +104,11 @@ struct Prompt: ParsableCommand {
         }
     }
 
-    /// Shows the prompt and runs the AppKit event loop. Never returns normally: the
-    /// ``Coordinator`` exits the process on success or when the prompt is dismissed.
+    /// Shows the prompt and runs the platform's event loop. Never returns normally: the
+    /// process exits on success or when the prompt is dismissed.
     ///
     /// - Throws: `ValidationError` if `--challenge` cannot be decoded.
     func run() throws {
-        // Needed for the Bluetooth permission of the QR code flow; see the function's comment.
-        relaunchAsResponsibleProcess()
         let challengeData: Data
         if let challenge {
             guard let decoded = Data(base64URLOrBase64: challenge), !decoded.isEmpty else {
@@ -117,20 +126,13 @@ struct Prompt: ParsableCommand {
             pin: pin,
             discover: list,
             info: info,
-            skipUserVerification: skipUserVerification)
+            skipUserVerification: skipUserVerification,
+            skipUserPresence: skipUserPresence,
+            flood: flood)
 
         bootstrapLogging(debug: debug, subcommand: Self.configuration.commandName!)
         fido_init(debug ? FIDO_DEBUG : 0)
-        let app = NSApplication.shared
-        app.setActivationPolicy(.accessory)
-        let model = PromptModel(rpId: rpId)
-        let coordinator = Coordinator(request: request, model: model)
-        showPromptPanel(model)
-        if rpId == nil {
-            coordinator.start(.securityKey, fixed: true)
-        } else if let method = transport.method {
-            coordinator.start(method, fixed: true)
-        }
-        withExtendedLifetime(coordinator) { app.run() }
+        // The user interface is the platform's: AppKit and SwiftUI on macOS, GTK on Linux.
+        runPrompt(request, transport: transport)
     }
 }

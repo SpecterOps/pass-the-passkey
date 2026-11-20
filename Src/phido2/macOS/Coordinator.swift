@@ -10,6 +10,10 @@ final class Coordinator {
     private var fido: FidoSession?
     private var bridge: SessionPromptBridge?
     private var hybrid: HybridSession?
+    /// What the security key sessions of this request have done so far; see ``SessionProgress``.
+    private let progress = SessionProgress()
+    /// The transport set on the command line, if any; flood mode starts it again.
+    private var fixedMethod: SignInMethod?
 
     /// - Parameters:
     ///   - request: What to sign and for which relying party.
@@ -30,7 +34,10 @@ final class Coordinator {
     ///   - fixed: `true` when the transport was set on the command line: the chooser is never
     ///     shown, so the back chevron cancels instead.
     func start(_ method: SignInMethod, fixed: Bool = false) {
-        if fixed { model.canGoBack = false }
+        if fixed {
+            model.canGoBack = false
+            fixedMethod = method
+        }
         switch method {
         case .securityKey: startSecurityKey()
         case .qrCode: startHybrid()
@@ -39,7 +46,7 @@ final class Coordinator {
 
     /// Runs a ``FidoSession`` on a worker thread, because libfido2 calls block.
     private func startSecurityKey() {
-        let session = FidoSession()
+        let session = FidoSession(progress: progress)
         let bridge = SessionPromptBridge(model: model)
         fido = session
         self.bridge = bridge
@@ -62,6 +69,9 @@ final class Coordinator {
         do {
             guard let rpId = request.rpId else {
                 throw HybridError(description: "A phone can only make assertions; a relying party ID is needed.")
+            }
+            if request.skipUserPresence {
+                logger.warning("A phone always asks its user; --skip-user-presence is ignored")
             }
             let session = try HybridSession(rpId: rpId, clientDataJSON: request.clientDataJSON,
                                             skipUserVerification: request.skipUserVerification)
@@ -102,16 +112,23 @@ final class Coordinator {
         model.showChooser()
     }
 
-    /// Ends everything and exits with status 1.
+    /// Ends everything and exits with status 1. In flood mode the prompt starts again
+    /// instead, unless it is an error that is being dismissed; Ctrl-C still ends the tool.
     private func cancel() {
         stopSessions()
+        if request.flood, model.stage != .failed {
+            logger.info("Cancelled; flood mode starts again")
+            if let fixedMethod { start(fixedMethod, fixed: true) } else { model.showChooser() }
+            return
+        }
         if model.stage != .failed { logger.info("Cancelled.") }
         exit(1)
     }
 
     private func stopSessions() {
-        bridge?.deactivate()
+        // Cancelled first, so that a worker released from the PIN prompt sees it and stops.
         fido?.cancel()
+        bridge?.deactivate()
         hybrid?.cancel()
         bridge = nil
         fido = nil
