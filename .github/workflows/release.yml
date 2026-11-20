@@ -31,16 +31,6 @@ jobs:
     - name: Build and Ad-Hoc Sign
       run: make
 
-    - name: Verify the Binary
-      run: |
-        codesign --verify --strict --verbose=2 "$BINARY"
-        # Fail if it links anything outside the operating system.
-        if otool -L "$BINARY" | tail -n +2 | grep -vE '^[[:space:]]+(/usr/lib/|/System/)'; then
-          echo "::error::phido2 has non-system dynamic dependencies"
-          exit 1
-        fi
-        "$BINARY" --help
-
     # A tarball keeps the executable bit, which artifact zips drop.
     - name: Package
       run: tar -czf phido2-macos-arm64.tar.gz -C "$(dirname "$BINARY")" phido2

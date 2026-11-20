@@ -95,9 +95,22 @@
                 </Expander>
 
                 <!-- PowerShell Section -->
-                <Expander Header="PowerShell" IsExpanded="False" Margin="0,0,0,0">
+                <Expander Header="PowerShell" IsExpanded="False" Margin="0,0,0,8">
                     <StackPanel Margin="8,6,8,6">
                         <ItemsControl ItemsSource="{Binding PowerShellCommands}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <local:ClipboardEnabledTextBox Text="{Binding Mode=OneWay}" Margin="0,0,0,4"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Expander>
+
+                <!-- phido2 (macOS / Linux) Section -->
+                <Expander Header="phido2 (macOS / Linux)" IsExpanded="False" Margin="0,0,0,0">
+                    <StackPanel Margin="8,6,8,6">
+                        <ItemsControl ItemsSource="{Binding Phido2Commands}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
                                     <local:ClipboardEnabledTextBox Text="{Binding Mode=OneWay}" Margin="0,0,0,4"/>

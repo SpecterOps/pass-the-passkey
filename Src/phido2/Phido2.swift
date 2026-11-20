@@ -17,10 +17,14 @@ enum TransportOption: String, ExpressibleByArgument, CaseIterable {
 /// subcommands ``Prompt`` and ``Monitor``.
 @main
 struct Phido2: ParsableCommand {
+    /// The tool's version, printed by `phido2 --version`.
+    static let version = "2.2.0"
+
     static let configuration = CommandConfiguration(
         commandName: "phido2",
         abstract: "Gets WebAuthn assertions from security keys and phones, and watches other programs use a security key.",
-        subcommands: [Prompt.self, Monitor.self])
+        version: version,
+        subcommands: [Prompt.self, Monitor.self, Enum.self])
 }
 
 /// `phido2 prompt`: parses arguments, shows the prompt, prints the JSON result.

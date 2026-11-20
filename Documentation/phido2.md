@@ -8,6 +8,8 @@ directly, without the operating system's or a browser's WebAuthn API:
   prints its details.
 - `phido2 monitor` watches what a security key answers while another program,
   such as a browser, uses it.
+- `phido2 enum` lists the security keys attached over USB and prints each one's
+  details.
 
 Both systems build the same Swift code base into one executable each. What
 differs is the prompt and the way keys are listened to:
@@ -253,10 +255,11 @@ Deciding that a ceremony is over is partly inference:
 | Assertion with the user-present flag | Assertion succeeded. |
 | Assertion without it | A browser's silent check for a credential; monitoring continues. |
 | Registration answer | Registration succeeded. |
+| "No credentials" error | Assertion failed, unless another attached key is still in use. The browser's placeholder request that follows is not reported as a ceremony of its own. |
 | Registration for the RP `.dummy` after "no credentials" | Assertion failed: browsers send this placeholder to wait for a touch before reporting that nothing matched. |
 | U2F registration answer after a CTAP2 "no credentials" | Assertion failed: the same placeholder, sent after the browser fell back to U2F. |
-| Error after the key waited for the user | Ceremony failed; the error does not say whether it was an assertion or a registration. |
-| Error without such a wait | The answer to a silent check; monitoring continues. |
+| Any other error after the key waited for the user | Ceremony failed; the error does not say whether it was an assertion or a registration. |
+| Any other error without such a wait | The answer to a silent check; monitoring continues. |
 | "PIN required" (or a related PIN error) after the key waited for the user | A step, not a failure: the browser had the key touched first and asks for the PIN next; monitoring continues. |
 | Cancelled request while another key was picked or is still waiting | The browser asked several keys and dropped this one; monitoring continues. |
 | U2F polling that stops for 3 seconds | Ceremony failed (cancelled or timed out). |
@@ -284,6 +287,28 @@ system component that runs it writes its progress to the unified log, which
   printed.
 - **Redacted.** The system hides the relying party and the tunnel's address
   (`<private>`).
+
+## Enumerate
+
+```bash
+phido2 enum
+```
+
+Lists every FIDO security key attached over USB and prints each one's details.
+No PIN or touch is needed, and no prompt is shown.
+
+```json
+{
+  "transport": "usb",
+  "manufacturer": "Yubico",
+  "product": "YubiKey FIDO2",
+  "aaguid": "ee882879-721c-4913-9775-3dfcce97072a",
+  "versions": ["U2F_V2", "FIDO_2_0", "FIDO_2_1"],
+  "transports": ["usb"],
+  "pinSet": true,
+  "builtInUserVerification": false
+}
+```
 
 ## Running a downloaded build
 

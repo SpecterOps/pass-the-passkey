@@ -136,6 +136,15 @@ jobs:
         "$BINARY" prompt --help
         "$BINARY" monitor --help
 
+    # The executable is the source of its version (set in Src/phido2/Phido2.swift).
+    - name: Extract Version
+      id: version
+      run: |
+        version="$("$BINARY" --version)"
+        echo "phido2 $version"
+        echo "$version" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+' || { echo "::error::unexpected version '$version'"; exit 1; }
+        echo "PHIDO2_VERSION=$version" >> "$GITHUB_OUTPUT"
+
     # A tarball keeps the executable bit, which artifact zips drop.
     - name: Package
       run: tar -czf phido2-macos-arm64.tar.gz -C "$(dirname "$BINARY")" phido2
@@ -143,7 +152,7 @@ jobs:
     - name: Upload phido2 as Artifact
       uses: actions/upload-artifact@v6
       with:
-        name: phido2-macos-arm64
+        name: phido2_v${{ steps.version.outputs.PHIDO2_VERSION }}_macos-arm64
         path: phido2-macos-arm64.tar.gz
         if-no-files-found: error
 
@@ -192,6 +201,15 @@ jobs:
         "$BINARY" prompt --help
         "$BINARY" monitor --help
 
+    # The executable is the source of its version (set in Src/phido2/Phido2.swift).
+    - name: Extract Version
+      id: version
+      run: |
+        version="$("$BINARY" --version)"
+        echo "phido2 $version"
+        echo "$version" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+' || { echo "::error::unexpected version '$version'"; exit 1; }
+        echo "PHIDO2_VERSION=$version" >> "$GITHUB_OUTPUT"
+
     # A tarball keeps the executable bit, which artifact zips drop.
     - name: Package
       run: tar -czf phido2-linux-${{ matrix.arch }}.tar.gz -C "$(dirname "$BINARY")" phido2
@@ -199,6 +217,6 @@ jobs:
     - name: Upload phido2 as Artifact
       uses: actions/upload-artifact@v6
       with:
-        name: phido2-linux-${{ matrix.arch }}
+        name: phido2_v${{ steps.version.outputs.PHIDO2_VERSION }}_linux-${{ matrix.arch }}
         path: phido2-linux-${{ matrix.arch }}.tar.gz
         if-no-files-found: error

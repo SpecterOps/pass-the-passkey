@@ -84,6 +84,19 @@ final class PromptModel {
     /// command line, so there is no chooser to return to.
     var canGoBack = true
 
+    /// Puts the prompt on screen. Set by whoever owns the window.
+    @ObservationIgnored var presenter: () -> Void = {}
+    /// Whether the prompt has been put on screen. It stays hidden until a screen is shown,
+    /// so a request that asks nothing of the user never opens a window.
+    @ObservationIgnored private(set) var isPresented = false
+
+    /// Puts the prompt on screen if it is not there yet.
+    func present() {
+        guard !isPresented else { return }
+        isPresented = true
+        presenter()
+    }
+
     /// Called when the user confirms the choice on the first screen.
     var onContinue: (SignInMethod) -> Void = { _ in }
     /// Called when the user goes back to the first screen.
@@ -110,6 +123,7 @@ final class PromptModel {
 
     /// Returns to the method chooser.
     func showChooser() {
+        present()
         stage = .choose
         title = SystemResources.text("Sign In")
         message = SystemResources.text("Choose how you’d like to sign in to “%@”. (website)", rpId)
@@ -121,6 +135,7 @@ final class PromptModel {
     ///
     /// - Parameter text: The `FIDO:/…` payload.
     func showQRCode(_ text: String) {
+        present()
         stage = .qrCode
         title = SystemResources.text("Scan QR Code (CABLE title)")
         message = SystemResources.text("Scan this QR code with a compatible device to sign in to “%@”. (website)", rpId)
@@ -135,6 +150,7 @@ final class PromptModel {
     /// - Parameter connected: `false` while the tunnel is being opened, `true` once the phone
     ///   is asking its user.
     func showPhoneProgress(connected: Bool) {
+        present()
         stage = .phone
         title = connected
             ? SystemResources.text("Use your other device to choose a passkey for “%@”. (website)", rpId)
@@ -146,6 +162,7 @@ final class PromptModel {
     ///
     /// - Parameter afterPIN: `true` when the user has just entered a PIN.
     func showActivate(afterPIN: Bool) {
+        present()
         stage = .activate
         title = SystemResources.text("Use Security Key")
         if afterPIN {
@@ -162,6 +179,7 @@ final class PromptModel {
     ///
     /// - Parameter incorrect: `true` when the previous PIN was rejected.
     func showPIN(incorrect: Bool) {
+        present()
         pin = ""
         stage = .pin
         title = SystemResources.text("Use Security Key")
@@ -175,6 +193,7 @@ final class PromptModel {
     /// - Parameter error: The failure. A missing credential gets the system sheet's wording;
     ///   anything else is shown by its description.
     func showFailure(_ error: Error) {
+        present()
         if let fido = error as? FidoError, fido.code == FIDO_ERR_NO_CREDENTIALS, !rpId.isEmpty {
             message = SystemResources.text(
                 "No credentials were found for “%@” on this security key. Try again with a different security key.", rpId)

@@ -190,12 +190,13 @@ private final class PromptPanel: NSPanel {
     override var canBecomeMain: Bool { true }
 }
 
-/// Shows the prompt as a floating, centred panel and brings the process to the front.
+/// Prepares the prompt as a floating, centred panel. It comes on screen, and the process to
+/// the front, when the model first shows a screen (``PromptModel/present()``).
 ///
 /// Must be called on the main thread after `NSApplication.shared` exists.
 ///
 /// - Parameter model: The state the prompt displays and reports user actions to.
-func showPromptPanel(_ model: PromptModel) {
+func preparePromptPanel(_ model: PromptModel) {
     let panel = PromptPanel(contentRect: .zero, styleMask: [.borderless], backing: .buffered, defer: false)
     // The QR code screen is taller than the others; let the panel follow the view's size.
     let controller = NSHostingController(rootView: PromptView(model: model))
@@ -211,7 +212,10 @@ func showPromptPanel(_ model: PromptModel) {
     // soon as a system prompt (such as the Bluetooth permission) or another app takes focus.
     panel.hidesOnDeactivate = false
     panel.setContentSize(controller.view.fittingSize)
-    panel.center()
-    panel.makeKeyAndOrderFront(nil)
-    NSApp.activate(ignoringOtherApps: true)
+    model.presenter = {
+        panel.setContentSize(controller.view.fittingSize)
+        panel.center()
+        panel.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 }

@@ -110,8 +110,7 @@ private final class PromptRunner {
         lock.lock()
         self.session = session
         lock.unlock()
-        // Shown at once, because the session first waits for a key to be plugged in.
-        if !request.skipUserPresence { prompt.showTouchDialog(afterPIN: false) }
+        // No dialog yet: the session asks for one when the user has something to do.
         let request = request
         let prompt = prompt
         Thread.detachNewThread {

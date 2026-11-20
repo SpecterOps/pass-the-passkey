@@ -151,15 +151,16 @@ struct MonitorTests {
 
     /// Checks which CTAP2 errors end the ceremony.
     ///
-    /// "No credentials" without a preceding wait for the user is the answer to a silent
-    /// check and must not end monitoring, and its repeats must not be logged again. The same
-    /// kind of error after the key asked for a touch is the ceremony failing.
-    @Test("an error ends the ceremony only after the key waited for the user")
+    /// "No credentials" means the sign-in failed, so it ends the ceremony at once, as a
+    /// failed assertion; its repeats (one per entry of an allow list) are not reported
+    /// again. Any other error ends the ceremony only after the key asked for a touch.
+    @Test("no credentials ends the ceremony; other errors only after the key waited for the user")
     func errorOutcome() {
         var tracker = CeremonyTracker()
         let noCredentials = message(CtapHidCommand.cbor, [0x2e])
-        #expect(tracker.observe(noCredentials).map(\.outcome) == [nil])
+        #expect(tracker.observe(noCredentials).map(\.outcome) == [CeremonyOutcome(ceremony: .assertion, succeeded: false)])
         #expect(tracker.observe(noCredentials).isEmpty)
+        #expect(tracker.observe(message(CtapHidCommand.cbor, [0x27])).first?.outcome == nil)
 
         #expect(tracker.observe(message(CtapHidCommand.keepalive, [0x02])).count == 1)
         #expect(tracker.observe(message(CtapHidCommand.keepalive, [0x02])).isEmpty)
@@ -186,6 +187,17 @@ struct MonitorTests {
         tracker = CeremonyTracker()
         _ = tracker.observe(message(CtapHidCommand.cbor, [0x2e]))
         #expect(tracker.observe(dummy).first?.outcome == CeremonyOutcome(ceremony: .assertion, succeeded: false))
+    }
+
+    /// Checks "no credentials" with two keys attached.
+    ///
+    /// While another key is still waiting for its user, the sign-in can succeed there, so
+    /// one key having no credential must not end the ceremony.
+    @Test("no credentials on one key does not end the ceremony while another key is waiting")
+    func noCredentialsWithAnotherKeyWaiting() {
+        var tracker = CeremonyTracker()
+        _ = tracker.observe(message(CtapHidCommand.keepalive, [0x02]), from: "B")
+        #expect(tracker.observe(message(CtapHidCommand.cbor, [0x2e]), from: "A").first?.outcome == nil)
     }
 
     /// Checks the sequence Safari produces when a FIDO2 key has no credential for the site.

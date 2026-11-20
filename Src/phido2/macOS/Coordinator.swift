@@ -50,7 +50,9 @@ final class Coordinator {
         let bridge = SessionPromptBridge(model: model)
         fido = session
         self.bridge = bridge
-        model.showActivate(afterPIN: false)
+        // After the chooser, the prompt moves on at once. Without a chooser it stays hidden
+        // until the session has something to ask of the user.
+        if model.isPresented { model.showActivate(afterPIN: false) }
         let request = request
         Thread.detachNewThread {
             do {
@@ -143,6 +145,8 @@ final class Coordinator {
     /// Reports a failure on stderr and in the prompt; the process exits when it is dismissed.
     private func fail(_ error: Error) {
         logger.error("\(error)")
+        // A request that never needed the prompt does not open it for the error either.
+        guard model.isPresented else { exit(1) }
         model.showFailure(error)
     }
 }

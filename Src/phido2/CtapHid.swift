@@ -197,7 +197,9 @@ enum Ctap2Response: Equatable {
         } else if let format = map[1]?.textValue, let raw = map[2]?.bytesValue,
                   let authData = AuthenticatorData(raw) {
             self = .attestation(format: format, authenticatorData: authData, raw: raw)
-        } else if map[3]?.intValue != nil
+        } else if (map[3]?.intValue != nil && map[1] == nil && map[2] == nil)
+                    // A fingerprint sensor's description also has an integer under 3, next to
+                    // one under 2; a retry counter comes without either of the other members.
                     || (map[1]?.mapValue != nil && map[2] == nil && map[3] == nil)
                     || (map[2]?.bytesValue != nil && map[1] == nil && map[3] == nil) {
             self = .clientPIN(pinRetries: map[3]?.intValue, uvRetries: map[5]?.intValue,
@@ -283,9 +285,10 @@ struct MonitorEvent {
 /// Turns the device's messages into observations and decides when a ceremony is over.
 ///
 /// Because only responses are visible, some conclusions are inferences:
-/// - A CTAP2 error ends the ceremony only if the key had been waiting for the user (a
-///   keepalive with status "user presence needed"). Errors without that are the answers to a
-///   browser's silent checks, e.g. one "no credentials" per entry of an allow list.
+/// - "No credentials" ends the ceremony as a failed assertion, unless another key is in
+///   use. The browser's placeholder request that follows it is not a ceremony of its own.
+/// - Any other CTAP2 error ends the ceremony only if the key had been waiting for the user
+///   (a keepalive with status "user presence needed").
 /// - Even after such a wait, "PIN required" and its relatives do not end it: the browser
 ///   sent the request without a PIN to have the key touched, and asks for the PIN next.
 /// - With several keys attached, the browser asks all of them and cancels the rest once one
@@ -316,6 +319,9 @@ struct CeremonyTracker {
     private var silentMatchSeen = false
     /// Identifies the last line of a kind that repeats many times a second.
     private var repeatKey: String?
+    /// Whether the previous ceremony ended with "no credentials", so that the browser's
+    /// placeholder request for it may still arrive.
+    private var placeholderExpected = false
     /// The authenticator documents already printed, one per security key.
     private var printedInfo: Set<Data> = []
 
@@ -346,8 +352,12 @@ struct CeremonyTracker {
     /// judged on its own. The authenticator details already printed are remembered.
     mutating func startNextCeremony() {
         let printed = printedInfo
+        // After "no credentials" the browser still sends its placeholder request; that
+        // belongs to the ceremony that has just been reported, not to a new one.
+        let placeholder = noCredentialsSeen
         self = CeremonyTracker()
         printedInfo = printed
+        placeholderExpected = placeholder
     }
 
     /// Call when a polled U2F request has had no answer for a few seconds.
@@ -379,6 +389,9 @@ struct CeremonyTracker {
 
         switch response {
         case .info(let versions, let aaguid, let options, let transports):
+            // A browser asks for this at the start of a ceremony; whatever was left over
+            // from the previous one is not coming any more.
+            placeholderExpected = false
             let document = AuthenticatorInfo(
                 transport: .usb, manufacturer: manufacturer, product: product,
                 aaguid: aaguid.flatMap(formatAAGUID), versions: versions, transports: transports,
@@ -416,6 +429,10 @@ struct CeremonyTracker {
 
         case .attestation(let format, let data, let raw):
             if data.rpIdHash == Self.dummyRpIdHash {
+                if placeholderExpected {
+                    placeholderExpected = false
+                    return [MonitorEvent(message: "Placeholder registration answered: the browser had the key touched before reporting that nothing matched")]
+                }
                 if noCredentialsSeen {
                     return [MonitorEvent(severity: .warning,
                                         message: "Assertion failed: no matching credential on this security key (inferred: the browser used a placeholder registration to wait for the touch)",
@@ -452,7 +469,19 @@ struct CeremonyTracker {
 
         case .error(let code):
             let name = String(cString: fido_strerr(Int32(code))) + " (0x" + String(code, radix: 16) + ")"
-            if code == UInt8(FIDO_ERR_NO_CREDENTIALS) { noCredentialsSeen = true }
+            if code == UInt8(FIDO_ERR_NO_CREDENTIALS) {
+                // Said once per ceremony; a browser may ask again for each entry of an allow
+                // list, and goes on to a placeholder request that only waits for a touch.
+                guard !noCredentialsSeen, !placeholderExpected else { return [] }
+                noCredentialsSeen = true
+                repeatKey = nil
+                // With several keys, the sign-in can still succeed on another one.
+                if !waiting.isEmpty || (chosen != nil && chosen != device) {
+                    return [MonitorEvent(message: "This security key has no matching credential (\(name)); another key is in use")]
+                }
+                return [MonitorEvent(severity: .warning, message: "Assertion failed: no matching credential on this security key (\(name))",
+                                    outcome: CeremonyOutcome(ceremony: .assertion, succeeded: false))]
+            }
             if wasWaiting, Self.pinStepErrors.contains(Int32(code)) {
                 // With a PIN-protected key, a browser first sends a request without a PIN.
                 // The key waits for a touch, which also tells the browser which of several
@@ -476,8 +505,7 @@ struct CeremonyTracker {
                                     outcome: CeremonyOutcome(ceremony: .unknown, succeeded: false))]
             }
             guard isNew("ctap2-error-\(code)") else { return [] }
-            return [MonitorEvent(severity: code == UInt8(FIDO_ERR_NO_CREDENTIALS) ? .info : .warning,
-                                message: "CTAP2 error: \(name)")]
+            return [MonitorEvent(severity: .warning, message: "CTAP2 error: \(name)")]
         }
     }
 
@@ -498,6 +526,10 @@ struct CeremonyTracker {
             // Safari's sequence when a FIDO2 key has nothing for the site: CTAP2 "no
             // credentials", a fall-back to U2F, then a placeholder registration that only
             // waits for the touch. A real registration on such a key would use CTAP2.
+            if placeholderExpected {
+                placeholderExpected = false
+                return [MonitorEvent(message: "Placeholder registration answered (U2F): the browser had the key touched before reporting that nothing matched")]
+            }
             if noCredentialsSeen {
                 return [MonitorEvent(severity: .warning,
                                      message: "Assertion failed: no matching credential on this security key (inferred: after \"no credentials\" the browser fell back to U2F and used a placeholder registration to wait for the touch)",
@@ -514,7 +546,8 @@ struct CeremonyTracker {
             return [MonitorEvent(severity: .debug, message: "U2F version response: \(version)")]
 
         case .status(let status):
-            pollingU2f = status == U2fResponse.conditionsNotSatisfied || status == U2fResponse.wrongData
+            // Polling for the placeholder of a ceremony already reported is not watched.
+            pollingU2f = !placeholderExpected && (status == U2fResponse.conditionsNotSatisfied || status == U2fResponse.wrongData)
             guard isNew("u2f-\(status)") else { return [] }
             let code = "0x" + String(status, radix: 16)
             switch status {

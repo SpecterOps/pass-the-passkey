@@ -27,11 +27,14 @@ func runPrompt(_ request: Request, transport: TransportOption) -> Never {
     app.setActivationPolicy(.accessory)
     let model = PromptModel(rpId: request.rpId)
     let coordinator = Coordinator(request: request, model: model)
-    showPromptPanel(model)
+    preparePromptPanel(model)
     if request.rpId == nil {
         coordinator.start(.securityKey, fixed: true)
     } else if let method = transport.method {
         coordinator.start(method, fixed: true)
+    } else {
+        // The chooser is the first screen.
+        model.present()
     }
     withExtendedLifetime(coordinator) { app.run() }
     exit(0)

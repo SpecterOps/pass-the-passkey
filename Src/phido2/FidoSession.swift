@@ -60,7 +60,10 @@ final class SessionProgress {
 ///
 /// Every method is called on the session's worker thread, never on the main thread.
 protocol SessionUI: AnyObject {
-    /// Tells the user to touch the key (or its fingerprint sensor).
+    /// Tells the user to insert the key or to touch it (or its fingerprint sensor).
+    ///
+    /// Until this or ``requestPIN(incorrect:retries:)`` is called, no prompt needs to be on
+    /// screen: a request that asks nothing of the user never calls either.
     ///
     /// - Parameter afterPIN: `true` when the user has just entered a PIN, so the wording
     ///   should ask them to activate the key "again".
@@ -156,7 +159,7 @@ final class FidoSession {
     ///   U2F-only, has no matching credential, has its PIN blocked, or fails in any other way.
     ///   A wrong PIN does not throw; the user is asked again.
     func run(_ request: Request, ui: SessionUI) throws {
-        let found = try waitForDevice()
+        let found = try waitForDevice(ui)
         logger.info("Using \(found.product ?? "security key") at \(found.path)")
 
         // One session at a time has the key open. A session that was cancelled lets go of it
@@ -186,7 +189,7 @@ final class FidoSession {
         var info = AuthenticatorInfo(transport: .usb, manufacturer: found.manufacturer, product: found.product,
                                      pinSet: pinSet, builtInUserVerification: builtInUV)
         if request.info, !progress.infoEmitted {
-            readInfo(dev, into: &info)
+            readAuthenticatorDetails(dev, into: &info)
             emit(info)
             progress.infoEmitted = true
         }
@@ -215,9 +218,10 @@ final class FidoSession {
             do {
                 // A session cancelled in the meantime must not start waiting for a touch.
                 if isCancelled { throw FidoError.cancelled }
-                // Without user presence the key answers by itself, unless it still has to
-                // verify the user with its fingerprint sensor.
-                if !request.skipUserPresence || verification.reported == .builtIn {
+                // The prompt is shown only when the user has something to do: touch the key
+                // for the assertion, or put a finger on its sensor. Listing credentials with
+                // a PIN, for example, needs neither.
+                if (request.rpId != nil && !request.skipUserPresence) || verification.reported == .builtIn {
                     ui.showActivate(afterPIN: enteredPIN != nil)
                 }
                 return try attempt(dev, request, verification)
@@ -313,9 +317,10 @@ final class FidoSession {
 
     /// Polls until a FIDO HID device is attached.
     ///
+    /// - Parameter ui: Asked to tell the user to insert a key, if none is attached.
     /// - Returns: The first device found. With several attached, the rest are ignored.
     /// - Throws: ``FidoError/cancelled`` if the session is cancelled while waiting.
-    private func waitForDevice() throws -> FoundDevice {
+    private func waitForDevice(_ ui: SessionUI) throws -> FoundDevice {
         var announced = false
         while true {
             if isCancelled { throw FidoError.cancelled }
@@ -329,26 +334,12 @@ final class FidoSession {
                                    manufacturer: string(fido_dev_info_manufacturer_string(entry)),
                                    product: string(fido_dev_info_product_string(entry)))
             }
-            if !announced { logger.info("Waiting for a security key…"); announced = true }
+            if !announced {
+                logger.info("Waiting for a security key…")
+                ui.showActivate(afterPIN: false)
+                announced = true
+            }
             Thread.sleep(forTimeInterval: 0.3)
-        }
-    }
-
-    /// Fills in the AAGUID, protocol versions and transports from `authenticatorGetInfo`.
-    ///
-    /// Failures are ignored: the information is diagnostic only.
-    private func readInfo(_ dev: OpaquePointer, into info: inout AuthenticatorInfo) {
-        var ci = fido_cbor_info_new()
-        defer { fido_cbor_info_free(&ci) }
-        guard fido_dev_get_cbor_info(dev, ci) == FIDO_OK else { return }
-        if let aaguid = Data(fido_cbor_info_aaguid_ptr(ci), fido_cbor_info_aaguid_len(ci)), aaguid.count == 16 {
-            info.aaguid = formatAAGUID(aaguid)
-        }
-        if let versions = fido_cbor_info_versions_ptr(ci) {
-            info.versions = (0..<fido_cbor_info_versions_len(ci)).compactMap { string(versions[$0]) }
-        }
-        if let transports = fido_cbor_info_transports_ptr(ci) {
-            info.transports = (0..<fido_cbor_info_transports_len(ci)).compactMap { string(transports[$0]) }
         }
     }
 
@@ -458,6 +449,76 @@ final class FidoSession {
                                 userHandle: userId)))
         }
         return credentials
+    }
+}
+
+// MARK: - Enumeration
+
+/// Lists every FIDO authenticator attached over USB and reads each one's details, for the
+/// `enum` subcommand.
+///
+/// Each key is opened read-only to ask it `authenticatorGetInfo`; nothing is signed, no
+/// credential is listed, and the user is never prompted, so no PIN or touch is needed. A key
+/// that cannot be opened, or that speaks only U2F, is still reported with the identity its USB
+/// descriptors give (manufacturer and product); the CTAP2 details are then left `nil`.
+///
+/// - Returns: One ``AuthenticatorInfo`` per attached authenticator, in the order libfido2
+///   reports them. Empty when none is attached.
+func enumerateAuthenticators() -> [AuthenticatorInfo] {
+    // 64 is far more security keys than anyone plugs in at once; extras would simply be ignored.
+    let capacity = 64
+    var list = fido_dev_info_new(capacity)
+    defer { fido_dev_info_free(&list, capacity) }
+    var count = 0
+    guard fido_dev_info_manifest(list, capacity, &count) == FIDO_OK, count > 0 else { return [] }
+
+    var result: [AuthenticatorInfo] = []
+    for i in 0..<count {
+        guard let entry = fido_dev_info_ptr(list, i), let path = string(fido_dev_info_path(entry)) else { continue }
+        var info = AuthenticatorInfo(
+            transport: .usb,
+            manufacturer: string(fido_dev_info_manufacturer_string(entry)),
+            product: string(fido_dev_info_product_string(entry)))
+        readOpenedAuthenticator(path, into: &info)
+        result.append(info)
+    }
+    return result
+}
+
+/// Opens one authenticator by its HID path and fills in what CTAP2 reveals: whether a PIN is
+/// set, whether built-in verification is enrolled, and the AAGUID, versions and transports.
+///
+/// Failures are ignored on purpose: a key that will not open, or is U2F-only, keeps the USB
+/// identity already in `info` and leaves the CTAP2 fields `nil`.
+private func readOpenedAuthenticator(_ path: String, into info: inout AuthenticatorInfo) {
+    guard let dev = fido_dev_new() else { return }
+    defer {
+        var d: OpaquePointer? = dev
+        fido_dev_free(&d)
+    }
+    guard fido_dev_open(dev, path) == FIDO_OK else { return }
+    defer { fido_dev_close(dev) }
+    guard fido_dev_is_fido2(dev) else { return }
+    info.pinSet = fido_dev_has_pin(dev)
+    info.builtInUserVerification = fido_dev_has_uv(dev)
+    readAuthenticatorDetails(dev, into: &info)
+}
+
+/// Fills in the AAGUID, protocol versions and transports from `authenticatorGetInfo`.
+///
+/// Failures are ignored: the information is diagnostic only.
+private func readAuthenticatorDetails(_ dev: OpaquePointer, into info: inout AuthenticatorInfo) {
+    var ci = fido_cbor_info_new()
+    defer { fido_cbor_info_free(&ci) }
+    guard fido_dev_get_cbor_info(dev, ci) == FIDO_OK else { return }
+    if let aaguid = Data(fido_cbor_info_aaguid_ptr(ci), fido_cbor_info_aaguid_len(ci)), aaguid.count == 16 {
+        info.aaguid = formatAAGUID(aaguid)
+    }
+    if let versions = fido_cbor_info_versions_ptr(ci) {
+        info.versions = (0..<fido_cbor_info_versions_len(ci)).compactMap { string(versions[$0]) }
+    }
+    if let transports = fido_cbor_info_transports_ptr(ci) {
+        info.transports = (0..<fido_cbor_info_transports_len(ci)).compactMap { string(transports[$0]) }
     }
 }
 

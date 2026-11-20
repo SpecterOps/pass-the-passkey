@@ -17,7 +17,7 @@
     <!-- Assembly metadata -->
     <AssemblyTitle>Passkey Injector</AssemblyTitle>
     <AssemblyName>PasskeyInjector</AssemblyName>
-    <Version>2.8.0</Version>
+    <Version>2.9.0</Version>
     <!-- TypeScript configuration (must be synced with tsconfig.json) -->
     <TypeScriptCompileBlocked>false</TypeScriptCompileBlocked>
     <TypeScriptToolsVersion>Latest</TypeScriptToolsVersion>
