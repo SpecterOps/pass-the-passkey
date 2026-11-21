@@ -32,4 +32,7 @@ public interface IC2CommandsDialogViewModel : INotifyPropertyChanged
 
     /// <summary>Gets the PowerShell command variants.</summary>
     ObservableCollection<string> PowerShellCommands { get; }
+
+    /// <summary>Gets the phido2 (macOS/Linux) commands.</summary>
+    ObservableCollection<string> Phido2Commands { get; }
 }

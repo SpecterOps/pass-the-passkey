@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!-- Embedded into the executable's __TEXT,__info_plist section (see Package.swift).
+     macOS refuses Bluetooth access to a process without this usage description. -->
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>phido2</string>
+	<key>CFBundleName</key>
+	<string>phido2</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Bluetooth is used to find the phone that scanned the QR code.</string>
+</dict>
+</plist>

@@ -5,6 +5,17 @@ All notable changes to Pass-the-Passkey are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **[phido2](phido2.md)** — a new command-line tool for **macOS and Linux**
+  that works with FIDO2 security keys directly, bypassing the operating
+  system's and the browser's WebAuthn API, with `prompt`, `monitor` and `enum`
+  subcommands.
+- **FIDO2 support in the Passkey Injector** — the C2 command generation now also
+  emits [phido2](phido2.md) `prompt` commands for macOS and Linux.
+
 ## [2.8.0] - 2026-09-14
 
 ### Added
@@ -32,5 +43,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 _Versions prior to 2.7.0 predate the public release and are not tracked here._
 
+[Unreleased]: https://github.com/SpecterOps/pass-the-passkey/compare/v2.8.0...HEAD
 [2.8.0]: https://github.com/SpecterOps/pass-the-passkey/compare/v2.7.0...v2.8.0
 [2.7.0]: https://github.com/SpecterOps/pass-the-passkey/releases/tag/v2.7.0

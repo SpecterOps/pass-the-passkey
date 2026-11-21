@@ -65,6 +65,17 @@ a successful assertion from the browser.
 
 See the [WebAuthn Hook documentation](Documentation/WebAuthnHook.md) for more information.
 
+### phido2
+
+`phido2` is a command-line tool for macOS and Linux that works with FIDO2 security keys directly, without the operating system's or a browser's WebAuthn API.
+It gets a WebAuthn assertion from a USB security key, and it can watch a security key being used by another program, such as a browser.
+On macOS, its prompts mimic the native macOS sign-in sheet, while on Linux they mimic the Chromium security key prompt.
+On macOS, the hybrid transport is also supported, where a phone scans a QR code.
+
+<img src="Assets/phido2-macos-chooser.png" alt="Screenshot of the phido2 sign-in prompt on macOS" width="280"> <img src="Assets/phido2-macos-pin-incorrect.png" alt="Screenshot of the phido2 PIN prompt on macOS" width="280"> <img src="Assets/phido2-linux-pin-incorrect.png" alt="Screenshot of the phido2 PIN prompt on Linux" width="280">
+
+See the [phido2 documentation](Documentation/phido2.md) for more information.
+
 ### DSInternals Passkey UI
 
 `Passkey UI` is a simple Windows application that provides a graphical user interface for interacting with the Windows WebAuthn API. The source code of this tool is hosted in the [webauthn-interop](https://github.com/MichaelGrafnetter/webauthn-interop) repository.

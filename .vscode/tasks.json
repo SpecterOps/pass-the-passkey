@@ -49,6 +49,26 @@
       "problemMatcher": "$msCompile"
     },
     {
+      "label": "phido2: build",
+      "type": "shell",
+      "command": "make",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "phido2: test",
+      "type": "shell",
+      "command": "make test",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
       "label": "publish",
       "type": "shell",
       "command": "dotnet publish -r win-x64 --nologo; dotnet publish -r win-arm64 --nologo",

@@ -12,8 +12,8 @@ on:
     - '.github/workflows/autobuild.yml'
 
 jobs:
-  build:
-    name: 'Build'
+  build-windows:
+    name: 'Build Windows'
     runs-on: windows-2025-vs2026
     timeout-minutes: 30
     env:
@@ -100,3 +100,123 @@ jobs:
       with:
         name: SharpPasskeys_v${{ steps.versions.outputs.SHARPPASSKEYS_VERSION }}
         path: Build/bin/SpecterOps.Passkeys.SharpPasskeys/release/SharpPasskeys.exe
+
+  build-macos:
+    name: 'Build macOS'
+    # Apple silicon runner; Package.swift requires macOS 26.4.
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      BINARY: Build/bin/phido2-macos/release/phido2
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v6
+
+    - name: Install libfido2
+      run: brew install libfido2
+
+    - name: Run Unit Tests
+      run: make test
+
+    - name: Build and Ad-Hoc Sign
+      run: make
+
+    - name: Verify the Binary
+      run: |
+        codesign --verify --strict --verbose=2 "$BINARY"
+        codesign --display --verbose=2 "$BINARY" 2>&1 | grep 'Signature=adhoc'
+        # Fail if it links anything outside the operating system.
+        if otool -L "$BINARY" | tail -n +2 | grep -vE '^[[:space:]]+(/usr/lib/|/System/)'; then
+          echo "::error::phido2 has non-system dynamic dependencies"
+          exit 1
+        fi
+        "$BINARY" --help
+        "$BINARY" prompt --help
+        "$BINARY" monitor --help
+
+    # The executable is the source of its version (set in Src/phido2/Phido2.swift).
+    - name: Extract Version
+      id: version
+      run: |
+        version="$("$BINARY" --version)"
+        echo "phido2 $version"
+        echo "$version" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+' || { echo "::error::unexpected version '$version'"; exit 1; }
+        echo "PHIDO2_VERSION=$version" >> "$GITHUB_OUTPUT"
+
+    # A tarball keeps the executable bit, which artifact zips drop.
+    - name: Package
+      run: tar -czf phido2-macos-arm64.tar.gz -C "$(dirname "$BINARY")" phido2
+
+    - name: Upload phido2 as Artifact
+      uses: actions/upload-artifact@v6
+      with:
+        name: phido2_v${{ steps.version.outputs.PHIDO2_VERSION }}_macos-arm64
+        path: phido2-macos-arm64.tar.gz
+        if-no-files-found: error
+
+  build-linux:
+    name: 'Build Linux (${{ matrix.arch }})'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - arch: amd64
+          runner: ubuntu-24.04
+        - arch: arm64
+          runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    # The official Swift image; the runners themselves have no Swift toolchain of this version.
+    container: swift:6.2-noble
+    timeout-minutes: 30
+    env:
+      BINARY: Build/bin/phido2-linux/release/phido2
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v6
+
+    - name: Install Development Packages
+      run: |
+        apt-get update
+        apt-get install --yes --no-install-recommends make pkg-config \
+          libfido2-dev libcbor-dev libssl-dev libgtk-3-dev
+
+    - name: Run Unit Tests
+      run: make test
+
+    - name: Build
+      run: make
+
+    - name: Verify the Binary
+      run: |
+        ldd "$BINARY"
+        # The Swift runtime must be inside the executable: a stock desktop does not have it.
+        if ldd "$BINARY" | grep -E 'libswift|libFoundation|libdispatch|libBlocksRuntime|not found'; then
+          echo "::error::phido2 depends on libraries a stock desktop does not have"
+          exit 1
+        fi
+        ls -l "$BINARY"
+        "$BINARY" --help
+        "$BINARY" prompt --help
+        "$BINARY" monitor --help
+
+    # The executable is the source of its version (set in Src/phido2/Phido2.swift).
+    - name: Extract Version
+      id: version
+      run: |
+        version="$("$BINARY" --version)"
+        echo "phido2 $version"
+        echo "$version" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+' || { echo "::error::unexpected version '$version'"; exit 1; }
+        echo "PHIDO2_VERSION=$version" >> "$GITHUB_OUTPUT"
+
+    # A tarball keeps the executable bit, which artifact zips drop.
+    - name: Package
+      run: tar -czf phido2-linux-${{ matrix.arch }}.tar.gz -C "$(dirname "$BINARY")" phido2
+
+    - name: Upload phido2 as Artifact
+      uses: actions/upload-artifact@v6
+      with:
+        name: phido2_v${{ steps.version.outputs.PHIDO2_VERSION }}_linux-${{ matrix.arch }}
+        path: phido2-linux-${{ matrix.arch }}.tar.gz
+        if-no-files-found: error

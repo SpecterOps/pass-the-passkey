@@ -18,11 +18,20 @@
     <File Path=".gitignore" />
     <File Path="global.json" />
     <File Path="Src/Directory.Build.props" />
+    <File Path=".gitattributes" />
+    <File Path="Makefile" />
   </Folder>
   <Folder Name="/Workflows/">
     <File Path=".github/workflows/autobuild.yml" />
     <File Path=".github/workflows/release.yml" />
     <File Path=".github/workflows/codeql-analysis.yml" />
+  </Folder>
+  <!-- Native phido2 tool for macOS and Linux (Swift; built with make, not by this solution) -->
+  <Folder Name="/phido2/">
+    <File Path="Src/phido2/Makefile" />
+    <File Path="Src/phido2/Package.swift" />
+    <File Path="Src/phido2/macOS/Info.plist" />
+    <File Path="Documentation/phido2.md" />
   </Folder>
   <Folder Name="/Scripts/">
     <File Path="Src/Scripts/Invoke-EntraPasskeyInjection.ps1" />
